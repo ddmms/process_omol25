@@ -521,7 +521,7 @@ class S3DataProcessor:
                     self.comm.send((rec, x), dest=0, tag=TAG_RESULT)
                     recs.append(rec)
                     all_atoms.append(atoms)
-                    if len(recs) >= 50:
+                    if len(recs) >= 100:
                         self.flush_recs(recs, all_atoms)
                         recs = []
                         all_atoms = []
@@ -536,7 +536,6 @@ class S3DataProcessor:
 
     def _final_merge(self, elapsed_time):
         """Merges per-rank part files into single Parquet and ExtXYZ outputs."""
-        import ase.io as ase_io
 
         # --- Parquet merge ---
         all_dfs = []
@@ -567,7 +566,7 @@ class S3DataProcessor:
         all_atoms = []
         if self.restart and output_xyz_final.exists():
             try:
-                all_atoms.extend(ase_io.read(str(output_xyz_final), index=":"))
+                all_atoms.extend(read(str(output_xyz_final), index=":"))
             except Exception as e:
                 logger.warning(f"Could not read existing XYZ for restart: {e}")
 
@@ -575,13 +574,13 @@ class S3DataProcessor:
         for xf in xyz_parts:
             if xf == output_xyz_final: continue
             try:
-                all_atoms.extend(ase_io.read(str(xf), index=":"))
+                all_atoms.extend(read(str(xf), index=":"))
                 xf.unlink(missing_ok=True)
             except Exception as e:
                 logger.warning(f"XYZ merge error for {xf}: {e}")
 
         if all_atoms:
-            ase_io.write(str(output_xyz_final), all_atoms, format="extxyz")
+            write(str(output_xyz_final), all_atoms, format="extxyz")
             logger.info(f"Merged ExtXYZ into {output_xyz_final} ({len(all_atoms)} structures)")
 
 
