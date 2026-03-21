@@ -284,6 +284,47 @@ class S3DataProcessor:
         with open(self.files_to_process, "r", encoding="utf-8") as f:
             self.data = json_load(f)
 
+        if self.restart:
+            if self.rank == 0:
+                logger.info("Scanning output directory to recover already processed files...")
+                recovered_count = 0
+                parquet_files = list(self.output_dir.glob(f"props_{self.group_name}*.parquet"))
+                
+                from ase.io import read as ase_read
+                for pf in parquet_files:
+                    xyz_file = pf.parent / pf.name.replace("props_", "structs_").replace(".parquet", ".xyz")
+                    
+                    try:
+                        if not xyz_file.exists():
+                            raise FileNotFoundError(f"Missing ExtXYZ partner: {xyz_file.name}")
+                            
+                        df = pd.read_parquet(pf, columns=["argonne_rel"])
+                        
+                        atoms_list = ase_read(str(xyz_file), index=":")
+                        if not isinstance(atoms_list, list):
+                            atoms_list = [atoms_list] if atoms_list else []
+                            
+                        if len(df) != len(atoms_list):
+                            raise ValueError(f"Length mismatch: {len(df)} Parquet rows vs {len(atoms_list)} XYZ structures")
+                            
+                        # If we pass all checks, mark as processed!
+                        for x in df["argonne_rel"].dropna().unique():
+                            if x in self.data and not self.data[x].get("processed", False):
+                                self.data[x]["processed"] = True
+                                recovered_count += 1
+                                
+                    except Exception as e:
+                        # If a part file is corrupt/orphaned, delete it so _final_merge ignores it
+                        logger.warning(f"Discarding corrupt/incomplete part {pf.name}: {e}")
+                        pf.unlink(missing_ok=True)
+                        xyz_file.unlink(missing_ok=True)
+                
+                if recovered_count > 0:
+                    logger.info(f"Recovered {recovered_count} previously processed items from disk, and discarded invalid parts.")
+            
+            if self.size > 1 and self.comm is not None:
+                self.data = self.comm.bcast(self.data, root=0)
+
         self.prefixes = [x for x in self.data if not self.data[x].get("processed", False)]
 
         if self.rank == 0:
@@ -447,10 +488,10 @@ class S3DataProcessor:
         processed_count = 0
         pbar = tqdm(total=num_tasks, desc="Total Progress")
         
-        # We wait for results until all tasks are accounted for OR all workers finished
+        # We wait for results until all workers have finished
         active_workers = self.size - 1
         
-        while active_workers > 0 or processed_count < num_tasks:
+        while active_workers > 0:
             status = MPI.Status()
             # We use ANY_TAG because workers might send TAG_RESULT or TAG_DONE
             msg = self.comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
@@ -459,10 +500,11 @@ class S3DataProcessor:
 
             if tag == TAG_RESULT and isinstance(msg, tuple):
                 rec, x = msg
-                if x in self.data:
+                if rec is not None and x in self.data:
                     self.data[x]['processed'] = True
-                    processed_count += 1
-                    pbar.update(1)
+                # Always advance the progress bar, even on failure
+                processed_count += 1
+                pbar.update(1)
             elif tag == TAG_DONE:
                 active_workers -= 1
                 logger.debug(f"Worker {source} finished. {active_workers} remaining.")
@@ -525,6 +567,9 @@ class S3DataProcessor:
                         self.flush_recs(recs, all_atoms)
                         recs = []
                         all_atoms = []
+                else:
+                    x = self.prefixes[idx]
+                    self.comm.send((None, x), dest=0, tag=TAG_RESULT)
             
             # Final flush and signal manager
             if recs: self.flush_recs(recs, all_atoms)
