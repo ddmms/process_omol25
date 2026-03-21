@@ -1,5 +1,7 @@
 import argparse
 import logging
+import os
+os.environ['ASE_MPI'] = '0'
 from pathlib import Path
 
 from .process_omol25 import S3DataProcessor, setup_logging
