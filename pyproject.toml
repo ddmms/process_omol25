@@ -24,6 +24,7 @@ dependencies = [
 
 [project.scripts]
 process_omol25 = "process_omol25.cli:main"
+download_omol25 = "process_omol25.download_omol25:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
