@@ -242,6 +242,7 @@ class S3DataProcessor:
         self.rank = rank
         self.size = size
         self.comm = comm
+        self.win = None
         self.output_dir = args.output_dir
         self.local_dir = args.local_dir
         self.restart = args.restart
@@ -388,11 +389,16 @@ class S3DataProcessor:
         """Processes a single task synchronously."""
         start_time = time.time()
         x = self.prefixes[idx]
-        source = x + self.data[x]['key']
+        key_list = self.data[x]['key']
+        if isinstance(key_list, list):
+            tar_key = key_list[0]
+        else:
+            tar_key = key_list
+        source = x + tar_key
         rec: Dict[str, Any] = {}
         try:
             rec["argonne_rel"] = x
-            rec["data_id"] = source.split("/")[0]
+            rec["data_id"] = source.split("/")[-1]
 
             buffer = BytesIO()
             if self.local_dir:
@@ -420,48 +426,36 @@ class S3DataProcessor:
             return None
 
     def _manager_loop(self):
-        """Rank 0 Dispatcher loop (Synchronous)."""
+        """Rank 0 Result Collector loop (Hybrid RMA)."""
         from mpi4py import MPI
         start_time = time.time()
-        logger.info(f"Manager starting with {self.size - 1} workers.")
+        num_tasks = len(self.indices_to_process)
+        logger.info(f"Manager starting. Collecting results for {num_tasks} tasks.")
         
-        pending_indices = list(self.indices_to_process)
-        active_workers = self.size - 1
         processed_count = 0
+        pbar = tqdm(total=num_tasks, desc="Total Progress")
         
-        pbar = tqdm(total=len(pending_indices), desc="Total Progress")
+        # We wait for results until all tasks are accounted for OR all workers finished
+        active_workers = self.size - 1
         
-        while active_workers > 0:
+        while active_workers > 0 or processed_count < num_tasks:
             status = MPI.Status()
+            # We use ANY_TAG because workers might send TAG_RESULT or TAG_DONE
             msg = self.comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
             source = status.Get_source()
+            tag = status.Get_tag()
 
-            if msg == "READY":
-                if pending_indices and not self.stop_requested:
-                    idx = pending_indices.pop(0)
-                    self.comm.send(idx, dest=source, tag=TAG_TASK)
-                else:
-                    self.comm.send(None, dest=source, tag=TAG_STOP)
-                    active_workers -= 1
-            elif isinstance(msg, tuple):
+            if tag == TAG_RESULT and isinstance(msg, tuple):
                 rec, x = msg
-                self.data[x]['processed'] = True
-                processed_count += 1
-                pbar.update(1)
-
-        # Step 3: Wait for all workers to REALLY finish (DONE signal)
-        logger.info("Waiting for all workers to send DONE signal...")
-        workers_done = 0
-        while workers_done < self.size - 1:
-            status = MPI.Status()
-            msg = self.comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
-            if msg == "DONE":
-                workers_done += 1
-            elif isinstance(msg, tuple): # Delayed result
-                rec, x = msg
-                self.data[x]['processed'] = True
-                processed_count += 1
-                pbar.update(1)
+                if x in self.data:
+                    self.data[x]['processed'] = True
+                    processed_count += 1
+                    pbar.update(1)
+            elif tag == TAG_DONE:
+                active_workers -= 1
+                logger.debug(f"Worker {source} finished. {active_workers} remaining.")
+            
+            if self.stop_requested: break
 
         pbar.close()
         # Final restart save
@@ -473,7 +467,7 @@ class S3DataProcessor:
         self._final_merge(elapsed)
 
     def _worker_loop(self):
-        """Rank > 0 Processing loop (Synchronous)."""
+        """Rank > 0 Processing loop (Hybrid RMA)."""
         from mpi4py import MPI
         s3_client = None
         if not self.local_dir:
@@ -486,32 +480,42 @@ class S3DataProcessor:
             )
 
         recs = []
+        num_tasks = len(self.indices_to_process)
+        pending_indices = list(self.indices_to_process)
+        
+        # RMA buffer for Fetch_and_op
+        inc_v = np.array(1, dtype='int64')
+        res_v = np.array(0, dtype='int64')
+
         try:
             while not self.stop_requested:
-                # Tell manager we are ready
-                self.comm.send("READY", dest=0)
+                # One-sided fetch of next task index
+                self.win.Lock(0)
+                self.win.Fetch_and_op(inc_v, res_v, 0, 0, MPI.SUM)
+                self.win.Unlock(0)
                 
-                # Receive task
-                status = MPI.Status()
-                idx = self.comm.recv(source=0, tag=MPI.ANY_TAG, status=status)
-                
-                if idx is None: # STOP signal
+                idx_local = int(res_v)
+                if idx_local >= num_tasks:
                     break
                 
-                result = self.process_single(idx, s3_client)
-                if result:
-                    recs.append(result[0])
-                    # Send result back to manager for restart tracking
-                    self.comm.send(result, dest=0)
-                    
-                    # Periodic flush
-                    if psutil.Process().memory_info().rss > self.memory_threshold:
+                idx = pending_indices[idx_local]
+                
+                # Process
+                res = self.process_single(idx, s3_client=s3_client)
+                if res:
+                    self.comm.send(res, dest=0, tag=TAG_RESULT)
+                    recs.append(res[0])
+                    if len(recs) >= 50:
                         self.flush_recs(recs)
                         recs = []
-        finally:
+            
+            # Final flush and signal manager
             if recs: self.flush_recs(recs)
-            logger.info(f"Worker {self.rank} sending DONE signal.")
-            self.comm.send("DONE", dest=0)
+            logger.info(f"Worker {self.rank} sending TAG_DONE signal.")
+            self.comm.send("DONE", dest=0, tag=TAG_DONE)
+        except Exception as e:
+            logger.error(f"Worker {self.rank} crashed: {e}")
+            self.comm.send("DONE", dest=0, tag=TAG_DONE) 
 
     def _final_merge(self, elapsed_time):
         """Merges part files and prints stats."""
@@ -519,8 +523,9 @@ class S3DataProcessor:
         if self.restart and self.output_props_final.exists():
             all_dfs.append(pd.read_parquet(self.output_props_final))
 
-        part_files = sorted(list(self.output_dir.glob(f"props_{self.group_name}_*_part_*.parquet")))
+        part_files = sorted(list(self.output_dir.glob(f"props_{self.group_name}_*.parquet")))
         for pf in part_files:
+            if pf == self.output_props_final: continue
             try:
                 all_dfs.append(pd.read_parquet(pf))
                 pf.unlink(missing_ok=True)
@@ -534,22 +539,45 @@ class S3DataProcessor:
             
             if "process_time_s" in final_df.columns:
                 n = len(final_df)
-                times = final_df["process_time_s"]
                 logger.info(f"Throughput: {n / elapsed_time:.2f} files/s")
         else:
             logger.warning("No data processed.")
 
     def run_mpi(self):
-        """Entry point (Synchronous)."""
-        if self.size > 1:
+        """Main entry point for MPI runs (Hybrid RMA)."""
+        from mpi4py import MPI
+        self.comm = MPI.COMM_WORLD
+        self.rank = self.comm.Get_rank()
+        self.size = self.comm.Get_size()
+
+        if self.size < 2:
+            logger.warning("MPI size < 2. Falling back to serial.")
+            self.run_serial()
+            return
+
+        # Prepare RMA Window for task counter (Rank 0 hosts it)
+        # Allocate 8 bytes (int64)
+        itemsize = MPI.INT64_T.Get_size()
+        nbytes = itemsize if self.rank == 0 else 0
+        self.win = MPI.Win.Allocate(nbytes, itemsize, comm=self.comm)
+        
+        if self.rank == 0:
+            # Initialize counter to 0
+            mem = self.win.tomemory()
+            mem[0:8] = np.int64(0).tobytes()
+        
+        self.comm.Barrier() # Sync after window creation
+
+        try:
             if self.rank == 0:
                 self._manager_loop()
             else:
                 self._worker_loop()
-        else:
-            self._serial_run()
+        finally:
+            self.win.Free()
+            logger.info(f"Rank {self.rank} exiting clean.")
 
-    def _serial_run(self):
+    def run_serial(self):
         """Standard serial fallback (Synchronous)."""
         start_time = time.time()
         s3_client = None

@@ -91,10 +91,32 @@ def main():
         comm = mpi.COMM_WORLD
         rank = comm.Get_rank()
         size = comm.Get_size()
+        print(f"MPI enabled: rank={rank}, size={size}")
     else:
         comm = None
         rank = 0
         size = 1
+        print("MPI disabled: running in serial mode")
+
+    log_level_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
+    }
+    if rank == 0 :
+        logfile = args.log_file if args.log_file else Path(args.data_source.stem + ".log")
+        setup_logging(
+            level=log_level_map.get(args.log_level.upper(), logging.INFO),
+            log_file_path=logfile
+        )
+
+    if not args.local_dir and not args.login_file:
+        raise ValueError("--login-file is required when --local-dir is not specified.")
+
+    processor = S3DataProcessor(args, rank, size, comm)
+    processor.run_mpi()
 
     log_level_map = {
         "DEBUG": logging.DEBUG,
