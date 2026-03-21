@@ -301,16 +301,19 @@ class S3DataProcessor:
 
         self.indices_to_process = list(range(start_idx, end_idx))
 
-    def flush_recs(self, recs):
-        """Flushed current batch of records; usually called by Worker."""
+    def flush_recs(self, recs, all_atoms=None):
+        """Flush a batch of records to Parquet, and optionally atoms to ExtXYZ."""
         if not recs: return
         df = pd.DataFrame(recs)
         path = self.output_dir / f"props_{self.group_name}_{self.rank}_part_{self.chunk_idx}.parquet"
         df.to_parquet(path, index=False)
+        if all_atoms:
+            xyz_path = self.output_dir / f"structs_{self.group_name}_{self.rank}_part_{self.chunk_idx}.xyz"
+            write(str(xyz_path), all_atoms, format="extxyz")
         self.chunk_idx += 1
 
-    def _process_buffer(self, buffer: BytesIO, x: str) -> Optional[Dict[str, Any]]:
-        """Identical to previous _process_buffer."""
+    def _process_buffer(self, buffer: BytesIO, x: str):
+        """Parse a .tar.zst buffer; returns (rec dict, ASE Atoms) or None."""
         rec: Dict[str, Any] = {}
         try:
             decompressor = ZstdDecompressor()
@@ -380,13 +383,19 @@ class S3DataProcessor:
                     if k in eig: rec[k] = eig[k]
             else:
                 rec["status_eigs"] = "MISSING"
-            return rec
+
+            # Embed all properties into atoms.info for ExtXYZ output
+            for k, v in rec.items():
+                if v is not None:
+                    atoms.info[k] = v
+
+            return rec, atoms
         except Exception as e:
             logger.error(f"Error parsing buffer for {x}: {e}")
             return None
 
-    def process_single(self, idx: int, s3_client=None) -> Optional[Tuple[Dict[str, Any], str]]:
-        """Processes a single task synchronously."""
+    def process_single(self, idx: int, s3_client=None):
+        """Processes a single task synchronously. Returns (rec, atoms, x) or None."""
         start_time = time.time()
         x = self.prefixes[idx]
         key_list = self.data[x]['key']
@@ -414,13 +423,16 @@ class S3DataProcessor:
             
             buffer.seek(0)
             result = self._process_buffer(buffer, x)
-            if result:
-                rec.update(result)
-            else:
+            if result is None:
                 return None
+            parsed_rec, atoms = result
+            rec.update(parsed_rec)
             
             rec["process_time_s"] = time.time() - start_time
-            return rec, x
+            # Update atoms.info with the final rec (includes argonne_rel, data_id, process_time_s)
+            atoms.info["argonne_rel"] = x
+            atoms.info["data_id"] = rec["data_id"]
+            return rec, atoms, x
         except Exception as e:
             logger.error(f"Error processing {source}: {e}")
             return None
@@ -480,6 +492,7 @@ class S3DataProcessor:
             )
 
         recs = []
+        all_atoms = []
         num_tasks = len(self.indices_to_process)
         pending_indices = list(self.indices_to_process)
         
@@ -503,22 +516,29 @@ class S3DataProcessor:
                 # Process
                 res = self.process_single(idx, s3_client=s3_client)
                 if res:
-                    self.comm.send(res, dest=0, tag=TAG_RESULT)
-                    recs.append(res[0])
+                    rec, atoms, x = res
+                    # Send only (rec, x) to manager to keep message small
+                    self.comm.send((rec, x), dest=0, tag=TAG_RESULT)
+                    recs.append(rec)
+                    all_atoms.append(atoms)
                     if len(recs) >= 50:
-                        self.flush_recs(recs)
+                        self.flush_recs(recs, all_atoms)
                         recs = []
+                        all_atoms = []
             
             # Final flush and signal manager
-            if recs: self.flush_recs(recs)
+            if recs: self.flush_recs(recs, all_atoms)
             logger.info(f"Worker {self.rank} sending TAG_DONE signal.")
             self.comm.send("DONE", dest=0, tag=TAG_DONE)
         except Exception as e:
             logger.error(f"Worker {self.rank} crashed: {e}")
-            self.comm.send("DONE", dest=0, tag=TAG_DONE) 
+            self.comm.send("DONE", dest=0, tag=TAG_DONE)
 
     def _final_merge(self, elapsed_time):
-        """Merges part files and prints stats."""
+        """Merges per-rank part files into single Parquet and ExtXYZ outputs."""
+        import ase.io as ase_io
+
+        # --- Parquet merge ---
         all_dfs = []
         if self.restart and self.output_props_final.exists():
             all_dfs.append(pd.read_parquet(self.output_props_final))
@@ -535,13 +555,35 @@ class S3DataProcessor:
         if all_dfs:
             final_df = pd.concat(all_dfs, ignore_index=True)
             final_df.to_parquet(self.output_props_final, index=False)
-            logger.info(f"Merged into {self.output_props_final}")
-            
+            logger.info(f"Merged Parquet into {self.output_props_final}")
             if "process_time_s" in final_df.columns:
                 n = len(final_df)
                 logger.info(f"Throughput: {n / elapsed_time:.2f} files/s")
         else:
             logger.warning("No data processed.")
+
+        # --- ExtXYZ merge ---
+        output_xyz_final = self.output_dir / f"structs_{self.group_name}.xyz"
+        all_atoms = []
+        if self.restart and output_xyz_final.exists():
+            try:
+                all_atoms.extend(ase_io.read(str(output_xyz_final), index=":"))
+            except Exception as e:
+                logger.warning(f"Could not read existing XYZ for restart: {e}")
+
+        xyz_parts = sorted(list(self.output_dir.glob(f"structs_{self.group_name}_*.xyz")))
+        for xf in xyz_parts:
+            if xf == output_xyz_final: continue
+            try:
+                all_atoms.extend(ase_io.read(str(xf), index=":"))
+                xf.unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning(f"XYZ merge error for {xf}: {e}")
+
+        if all_atoms:
+            ase_io.write(str(output_xyz_final), all_atoms, format="extxyz")
+            logger.info(f"Merged ExtXYZ into {output_xyz_final} ({len(all_atoms)} structures)")
+
 
     def run_mpi(self):
         """Main entry point for MPI runs (Hybrid RMA)."""
@@ -591,14 +633,17 @@ class S3DataProcessor:
         
         try:
             recs = []
+            all_atoms = []
             for idx in tqdm(self.indices_to_process, desc="Serial"):
                 if self.stop_requested: break
                 res = self.process_single(idx, s3_client)
                 if res:
-                    recs.append(res[0])
-                    self.data[res[1]]['processed'] = True
+                    rec, atoms, x = res
+                    recs.append(rec)
+                    all_atoms.append(atoms)
+                    self.data[x]['processed'] = True
             
-            self.flush_recs(recs)
+            self.flush_recs(recs, all_atoms)
             with open(self.restart_file, "w") as f:
                 json_dump(self.data, f, indent=4)
             self._final_merge(time.time() - start_time)

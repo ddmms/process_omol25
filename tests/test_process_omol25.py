@@ -266,3 +266,101 @@ def test_process_omol25_restart_mpi():
                 p.rmdir()
             else:
                 p.unlink()
+
+
+def test_extxyz_props_consistency():
+    """Verify that every property in the Parquet row matches atoms.info in the .xyz output,
+    linked via geom_sha1 as the common key."""
+    import math
+    import pandas as pd
+    import ase.io
+
+    out_dir = Path("test_output_extxyz")
+    local_data_dir = Path("mock_s3_data_extxyz")
+    test_data_source = Path("test_extxyz_prefix.json")
+
+    # Cleanup
+    for d in [out_dir, local_data_dir]:
+        if d.exists():
+            for p in sorted(d.rglob('*'), reverse=True):
+                p.unlink() if p.is_file() else p.rmdir()
+            d.rmdir()
+    test_data_source.unlink(missing_ok=True)
+    Path("test_extxyz_prefix_restart.json").unlink(missing_ok=True)
+
+    # Setup: use the small prefix fixture
+    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    create_mock_data(local_data_dir, test_data_source)
+
+    # Run serial (no mpirun) to get a single pair of output files
+    cmd = [
+        sys.executable, "-m", "process_omol25.cli",
+        "--data-source", str(test_data_source),
+        "--output-dir", str(out_dir),
+        "--local-dir", str(local_data_dir),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0, f"Serial run failed:\n{result.stderr}"
+
+    # After merge there should be exactly ONE Parquet and ONE XYZ file (no rank-specific parts)
+    parquet_files = list(out_dir.glob("props_*.parquet"))
+    xyz_files = list(out_dir.glob("structs_*.xyz"))
+    assert len(parquet_files) == 1, f"Expected 1 merged Parquet, got: {parquet_files}"
+    assert len(xyz_files) == 1, f"Expected 1 merged XYZ, got: {xyz_files}"
+    # Confirm the merged names have no rank/part suffix (no underscore-digit pattern after group name)
+    import re
+    for f in parquet_files + xyz_files:
+        assert not re.search(r"_\d+(_part_\d+)?\.(parquet|xyz)$", f.name), (
+            f"Part/rank file was not merged: {f.name}"
+        )
+
+    # Load Parquet; index by geom_sha1
+    df = pd.read_parquet(parquet_files[0])
+    assert "geom_sha1" in df.columns, "geom_sha1 missing from Parquet"
+    parquet_by_sha = {row["geom_sha1"]: row for _, row in df.iterrows()}
+
+    # Load atoms from the single merged XYZ file
+    all_atoms = ase.io.read(str(xyz_files[0]), index=":")
+    assert all_atoms, "No atoms read from ExtXYZ file"
+
+    xyz_by_sha = {}
+    for at in all_atoms:
+        sha = at.info.get("geom_sha1")
+        assert sha is not None, "geom_sha1 missing from an atoms.info entry"
+        xyz_by_sha[sha] = at
+
+    # Every Parquet SHA must match an XYZ entry and vice versa
+    assert set(parquet_by_sha.keys()) == set(xyz_by_sha.keys()), (
+        "geom_sha1 keys differ between Parquet and XYZ outputs:\n"
+        f"  Parquet-only: {set(parquet_by_sha) - set(xyz_by_sha)}\n"
+        f"  XYZ-only:     {set(xyz_by_sha) - set(parquet_by_sha)}"
+    )
+
+    # Properties that are not written into atoms.info or are processing metadata
+    skip_keys = {"process_time_s"}
+
+    for sha, row in parquet_by_sha.items():
+        info = xyz_by_sha[sha].info
+        for key, pq_val in row.items():
+            if key in skip_keys or key not in info:
+                continue
+            xyz_val = info[key]
+            pq_is_nan = pq_val is None or (isinstance(pq_val, float) and math.isnan(pq_val))
+            xyz_is_nan = xyz_val is None or (isinstance(xyz_val, float) and math.isnan(xyz_val))
+            if pq_is_nan:
+                assert xyz_is_nan, (
+                    f"sha={sha} key={key}: Parquet=NaN/None but XYZ={xyz_val!r}"
+                )
+            else:
+                assert pq_val == xyz_val, (
+                    f"sha={sha} key={key}: Parquet={pq_val!r} != XYZ={xyz_val!r}"
+                )
+
+    # Cleanup
+    for d in [out_dir, local_data_dir]:
+        if d.exists():
+            for p in sorted(d.rglob('*'), reverse=True):
+                p.unlink() if p.is_file() else p.rmdir()
+            d.rmdir()
+    test_data_source.unlink(missing_ok=True)
+    Path("test_extxyz_prefix_restart.json").unlink(missing_ok=True)
