@@ -67,6 +67,11 @@ def parse_args():
         action="store_true",
         help="Skip configurations marked as processed in --data-source")
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Batch size to flush to disk. Defaults to 1% of tasks per worker.")
+    parser.add_argument(
         "--memory-threshold-gb",
         type=float,
         default=2.0,

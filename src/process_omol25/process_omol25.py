@@ -341,6 +341,17 @@ class S3DataProcessor:
         end_idx = min(start_idx + self.sample_size, max_idx)
 
         self.indices_to_process = list(range(start_idx, end_idx))
+        num_tasks = len(self.indices_to_process)
+        
+        if getattr(self.args, "batch_size", None) is not None:
+            self.batch_size = self.args.batch_size
+        else:
+            active_workers = max(1, self.size - 1) if self.size > 1 else max(1, self.size)
+            tasks_per_worker = max(1, num_tasks / active_workers)
+            self.batch_size = max(1, int(tasks_per_worker * 0.01))
+            
+        if self.rank == 0:
+            logger.info(f"Using flush batch size of {self.batch_size}")
 
     def flush_recs(self, recs, all_atoms=None):
         """Flush a batch of records to Parquet, and optionally atoms to ExtXYZ."""
@@ -563,7 +574,7 @@ class S3DataProcessor:
                     self.comm.send((rec, x), dest=0, tag=TAG_RESULT)
                     recs.append(rec)
                     all_atoms.append(atoms)
-                    if len(recs) >= 100:
+                    if len(recs) >= self.batch_size:
                         self.flush_recs(recs, all_atoms)
                         recs = []
                         all_atoms = []
@@ -686,8 +697,13 @@ class S3DataProcessor:
                     recs.append(rec)
                     all_atoms.append(atoms)
                     self.data[x]['processed'] = True
+                    if len(recs) >= self.batch_size:
+                        self.flush_recs(recs, all_atoms)
+                        recs = []
+                        all_atoms = []
             
-            self.flush_recs(recs, all_atoms)
+            if recs:
+                self.flush_recs(recs, all_atoms)
             with open(self.restart_file, "w") as f:
                 json_dump(self.data, f, indent=4)
             self._final_merge(time.time() - start_time)
