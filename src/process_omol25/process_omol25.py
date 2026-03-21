@@ -543,17 +543,30 @@ class S3DataProcessor:
                 all_dfs.append(pd.read_parquet(rank_part_file))
                 rank_part_file.unlink() # Clean up
 
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+
             if all_dfs:
                 final_df = pd.concat(all_dfs, ignore_index=True)
                 final_df.to_parquet(self.output_props_final, index=False)
                 logger.info(f"Merged {len(all_dfs)} parts into {self.output_props_final.resolve()}")
+                
+                if "process_time_s" in final_df.columns:
+                    times = final_df["process_time_s"]
+                    n = len(final_df)
+                    logger.info("-" * 30)
+                    logger.info("Processing Statistics:")
+                    logger.info(f"  Files processed: {n}")
+                    logger.info(f"  Total time:      {times.sum():.2f} s")
+                    logger.info(f"  Mean time:       {times.mean():.4f} s/file")
+                    logger.info(f"  Min time:        {times.min():.4f} s/file")
+                    logger.info(f"  Max time:        {times.max():.4f} s/file")
+                    logger.info(f"  Throughput:      {n / elapsed_time:.2f} files/s (aggregated)")
+                    logger.info("-" * 30)
             else:
                 raise RuntimeError(f"No data was successfully processed; {self.output_props_final} was not created.")
 
-            end_time = time.time()
-            elapsed_time = end_time - start_time
             logger.info("-" * 50)
             logger.info("Processing complete.")
             logger.info(f"Total files attempted: {len(self.indices_to_process)}")
             logger.info(f"Total execution time: {elapsed_time:.2f} seconds")
-
