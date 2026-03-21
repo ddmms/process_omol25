@@ -364,3 +364,146 @@ def test_extxyz_props_consistency():
             d.rmdir()
     test_data_source.unlink(missing_ok=True)
     Path("test_extxyz_prefix_restart.json").unlink(missing_ok=True)
+
+
+def test_restart_5ranks_matches_serial():
+    """Verify that a two-phase MPI restart run (5 ranks, split halfway) produces
+    the exact same Parquet rows and XYZ structures as a single serial run,
+    matching each structure via geom_sha1."""
+    import math
+    import pandas as pd
+    import ase.io
+
+    # ---- shared helpers ----
+    def cleanup(*paths):
+        for p in paths:
+            if p.exists():
+                if p.is_dir():
+                    for sub in sorted(p.rglob('*'), reverse=True):
+                        sub.unlink() if sub.is_file() else sub.rmdir()
+                    p.rmdir()
+                else:
+                    p.unlink()
+
+    # ---- paths ----
+    serial_dir      = Path("test_restart5_serial_out")
+    mpi_dir         = Path("test_restart5_mpi_out")
+    local_data_dir  = Path("mock_s3_data_restart5")
+    data_source     = Path("test_restart5_prefix.json")
+    restart_file    = Path("test_restart5_prefix_restart.json")
+
+    cleanup(serial_dir, mpi_dir, local_data_dir, data_source, restart_file)
+
+    # ---- setup: use the small prefix fixture (3 entries) ----
+    data_source.write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    create_mock_data(local_data_dir, data_source)
+
+    import json
+    with open(data_source) as f:
+        n_total = len(json.load(f))
+    half = n_total // 2          # first MPI pass processes this many
+    rest = n_total - half         # second MPI pass (restart) picks up the remainder
+
+    # ======================================================
+    # 1. Serial run – ground truth
+    # ======================================================
+    result = subprocess.run([
+        sys.executable, "-m", "process_omol25.cli",
+        "--data-source", str(data_source),
+        "--output-dir",  str(serial_dir),
+        "--local-dir",   str(local_data_dir),
+    ], capture_output=True, text=True)
+    assert result.returncode == 0, f"Serial run failed:\n{result.stderr}"
+
+    serial_parquet = list(serial_dir.glob("props_*.parquet"))
+    serial_xyz     = list(serial_dir.glob("structs_*.xyz"))
+    assert len(serial_parquet) == 1, f"Expected 1 merged Parquet, got {serial_parquet}"
+    assert len(serial_xyz)     == 1, f"Expected 1 merged XYZ, got {serial_xyz}"
+
+    serial_df   = pd.read_parquet(serial_parquet[0])
+    serial_ats  = ase.io.read(str(serial_xyz[0]), index=":")
+    serial_pq_by_sha  = {r["geom_sha1"]: r for _, r in serial_df.iterrows()}
+    serial_xyz_by_sha = {at.info["geom_sha1"]: at for at in serial_ats}
+
+    # ======================================================
+    # 2. MPI restart run in two phases
+    # ======================================================
+    base_cmd = [
+        "mpirun", "--oversubscribe", "-n", "5",
+        sys.executable, "-m", "process_omol25.cli",
+        "--output-dir",  str(mpi_dir),
+        "--local-dir",   str(local_data_dir),
+        "--mpi",
+    ]
+
+    # Phase 1: process first `half` items
+    r1 = subprocess.run(
+        base_cmd + ["--data-source", str(data_source), "--sample-size", str(half)],
+        capture_output=True, text=True,
+    )
+    assert r1.returncode == 0, f"MPI phase-1 failed:\n{r1.stderr}"
+    assert restart_file.exists(), "Restart file not created after phase 1"
+
+    # Phase 2: continue from restart file (picks up remaining items)
+    r2 = subprocess.run(
+        base_cmd + ["--data-source", str(restart_file), "--restart"],
+        capture_output=True, text=True,
+    )
+    assert r2.returncode == 0, f"MPI phase-2 failed:\n{r2.stderr}"
+
+    mpi_parquet = list(mpi_dir.glob("props_*.parquet"))
+    mpi_xyz     = list(mpi_dir.glob("structs_*.xyz"))
+    assert len(mpi_parquet) == 1, f"Expected 1 merged Parquet, got {mpi_parquet}"
+    assert len(mpi_xyz)     == 1, f"Expected 1 merged XYZ, got {mpi_xyz}"
+
+    mpi_df   = pd.read_parquet(mpi_parquet[0])
+    mpi_ats  = ase.io.read(str(mpi_xyz[0]), index=":")
+    mpi_pq_by_sha  = {r["geom_sha1"]: r for _, r in mpi_df.iterrows()}
+    mpi_xyz_by_sha = {at.info["geom_sha1"]: at for at in mpi_ats}
+
+    # ======================================================
+    # 3. Compare serial vs MPI-restart
+    # ======================================================
+    assert set(serial_pq_by_sha) == set(mpi_pq_by_sha), (
+        "Parquet SHA sets differ between serial and MPI-restart runs\n"
+        f"  serial-only: {set(serial_pq_by_sha) - set(mpi_pq_by_sha)}\n"
+        f"  mpi-only:    {set(mpi_pq_by_sha) - set(serial_pq_by_sha)}"
+    )
+    assert set(serial_xyz_by_sha) == set(mpi_xyz_by_sha), (
+        "XYZ SHA sets differ between serial and MPI-restart runs"
+    )
+
+    # argonne_rel and data_id are source-path metadata, not physical properties;
+    # they can legitimately differ when the same geometry appears under different prefixes
+    # (as in mock data where all structures are identical H2 molecules).
+    skip_keys = {"process_time_s", "argonne_rel", "data_id"}
+    for sha in serial_pq_by_sha:
+        s_row = serial_pq_by_sha[sha]
+        m_row = mpi_pq_by_sha[sha]
+        for key in s_row.index:
+            if key in skip_keys:
+                continue
+            sv, mv = s_row[key], m_row[key]
+            s_nan = sv is None or (isinstance(sv, float) and math.isnan(sv))
+            m_nan = mv is None or (isinstance(mv, float) and math.isnan(mv))
+            if s_nan:
+                assert m_nan, f"sha={sha} key={key}: serial=NaN but mpi={mv!r}"
+            else:
+                assert sv == mv, f"sha={sha} key={key}: serial={sv!r} != mpi={mv!r}"
+
+        # XYZ info comparison
+        s_info = serial_xyz_by_sha[sha].info
+        m_info = mpi_xyz_by_sha[sha].info
+        for key in s_info:
+            if key in skip_keys or key not in m_info:
+                continue
+            sv, mv = s_info[key], m_info[key]
+            s_nan = sv is None or (isinstance(sv, float) and math.isnan(sv))
+            m_nan = mv is None or (isinstance(mv, float) and math.isnan(mv))
+            if s_nan:
+                assert m_nan, f"sha={sha} xyz key={key}: serial=NaN but mpi={mv!r}"
+            else:
+                assert sv == mv, f"sha={sha} xyz key={key}: serial={sv!r} != mpi={mv!r}"
+
+    # ---- cleanup ----
+    cleanup(serial_dir, mpi_dir, local_data_dir, data_source, restart_file)
