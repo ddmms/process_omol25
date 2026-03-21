@@ -152,3 +152,55 @@ def test_process_omol25_no_mpi():
             d.rmdir()
     test_data_source.unlink(missing_ok=True)
     Path("test_noble_gas_prefix_no_mpi_restart.json").unlink(missing_ok=True)
+
+
+def test_download_omol25():
+    local_data_dir = Path("mock_s3_data_download")
+    test_data_source = Path("test_download_prefix.json")
+    
+    # Cleanup
+    if local_data_dir.exists():
+        for p in sorted(local_data_dir.rglob('*'), reverse=True):
+            p.unlink() if p.is_file() else p.rmdir()
+        local_data_dir.rmdir()
+
+    # Setup
+    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    create_mock_data(local_data_dir, test_data_source)
+    
+    cli_path = Path(sys.executable).parent / "download_omol25"
+    cmd = [
+        str(cli_path),
+        "--login-file", "psdi-argonne-omol25-ro.json",
+        "--data-source", str(test_data_source),
+        "--local-dir", str(local_data_dir),
+        "--sample-size", "1"
+    ]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    
+    # Check if a file was extracted. 
+    expected_file = Path("noble_gas_compounds/FXeNSO2F2_step20_0_1/orca.out")
+    assert expected_file.exists()
+    
+    # Cleanup
+    if local_data_dir.exists():
+        for p in sorted(local_data_dir.rglob('*'), reverse=True):
+            p.unlink() if p.is_file() else p.rmdir()
+        local_data_dir.rmdir()
+    
+    with open(test_data_source, "r") as f:
+        data = json.load(f)
+    for prefix in data:
+        p = Path(prefix)
+        if p.exists():
+            for sub in sorted(p.rglob('*'), reverse=True):
+                sub.unlink() if sub.is_file() else sub.rmdir()
+            try:
+                p.rmdir()
+            except OSError:
+                pass # Might not be empty if multiple tests ran
+            
+    test_data_source.unlink(missing_ok=True)
+    Path("test_download_prefix_restart.json").unlink(missing_ok=True)

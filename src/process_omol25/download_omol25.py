@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument("--sample-size", type=int, default=-1, help="Number of samples to run.")
     parser.add_argument("--start-index", type=int, default=0, help="Start index.")
     parser.add_argument("--restart", action="store_true", help="Skip configurations marked as processed.")
+    parser.add_argument("--local-dir", type=Path, default=None, help="Optional local directory to read data from instead of S3.")
     parser.add_argument("--mpi", action="store_true", help="Run with MPI.")
     return parser.parse_args()
 
@@ -98,12 +99,20 @@ def main():
             source = x + k
             try:
                 buffer = BytesIO()
-                s3.download_fileobj(
-                    Bucket=args.bucket,
-                    Key=source,
-                    Fileobj=buffer,
-                    Config=s3_transfer_options,
-                )
+                if args.local_dir:
+                    local_path = args.local_dir / source
+                    if not local_path.exists():
+                        logger.warning(f"Local file '{local_path}' not found. Skipping.")
+                        success = False
+                        continue
+                    buffer.write(local_path.read_bytes())
+                else:
+                    s3.download_fileobj(
+                        Bucket=args.bucket,
+                        Key=source,
+                        Fileobj=buffer,
+                        Config=s3_transfer_options,
+                    )
                 buffer.seek(0)
 
                 try:
