@@ -95,6 +95,7 @@ def main():
         key_list = [raw_key] if isinstance(raw_key, str) else raw_key
         
         success = True
+        file_start_time = time.time()
         for k in key_list:
             source = x + k
             try:
@@ -156,6 +157,7 @@ def main():
             
         if success:
             processed_successfully.append(x)
+            logger.info(f"Processed {x} in {time.time() - file_start_time:.2f} seconds.")
         pbar.update(1)
         
     pbar.close()

@@ -359,6 +359,7 @@ class S3DataProcessor:
         source = x + self.data[x]['key']
         rec: Dict[str, Any] = {}
         try:
+            start_time = time.time()
             rec["argonne_rel"] = x
             rec["data_id"] = source.split("/")[0]
 
@@ -446,6 +447,7 @@ class S3DataProcessor:
             else:
                 rec["status_eigs"] = "MISSING"
 
+            rec["process_time_s"] = time.time() - start_time
             return rec, x
         except ClientError as e:
             error_code = e.response['Error']['Code']
