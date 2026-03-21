@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "process_omol25"
+version = "0.1.0"
+description = "A Python package for processing omol-25 data using MPI."
+authors = [
+    { name = "Alin M Elena" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "boto3",
+    "pandas",
+    "ase",
+    "mpi4py",
+    "psutil",
+    "tqdm",
+    "zstandard",
+    "pyarrow"
+]
+
+[project.scripts]
+process_omol25 = "process_omol25.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
