@@ -14,7 +14,7 @@ def test_process_omol25_mpi():
     
     cli_path = os.path.join(os.path.dirname(sys.executable), "process_omol25")
     cmd = [
-        "mpirun", "-n", "2", 
+        "mpirun", "--oversubscribe", "-n", "2", 
         cli_path,
         "--login-file", "psdi-argonne-omol25-ro.json",
         "--data-source", test_data,

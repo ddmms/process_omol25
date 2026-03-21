@@ -34,5 +34,8 @@ jobs:
         echo '{"user": "dummy", "access_key": "dummy", "secret_key": "dummy"}' > psdi-argonne-omol25-ro.json
 
     - name: Run tests
+      env:
+        OMPI_MCA_rmaps_base_oversubscribe: 1
+        PRTE_MCA_rmaps_base_oversubscribe: 1
       run: |
         pytest tests/
