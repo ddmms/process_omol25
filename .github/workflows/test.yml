@@ -20,8 +20,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
       with:
         python-version: ${{ matrix.python-version }}
 
@@ -31,10 +31,7 @@ jobs:
         sudo apt-get install -y openmpi-bin libopenmpi-dev
 
     - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .
-        pip install pytest pytest-cov
+      run: uv sync --extra dev
 
     - name: Create dummy login file for tests
       run: |
@@ -45,7 +42,7 @@ jobs:
         OMPI_MCA_rmaps_base_oversubscribe: 1
         PRTE_MCA_rmaps_base_oversubscribe: 1
       run: |
-        pytest tests/ | tee pytest-coverage.txt
+        uv run pytest tests/ | tee pytest-coverage.txt
 
     - name: Update Coverage Badge in README
       if: matrix.python-version == '3.12' && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -53,7 +50,7 @@ jobs:
         COVERAGE=$(grep "TOTAL" pytest-coverage.txt | awk '{print $NF}' | sed 's/%//')
         echo "Detected coverage: ${COVERAGE}%"
         sed -i "s|coverage-[0-9]\+%|coverage-${COVERAGE}%|g" README.md
-        
+
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
         git add README.md
