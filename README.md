@@ -6,7 +6,8 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Docs Publish](https://github.com/ddmms/process_omol25/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/gh-pages.yml)
 [![PyPI Publish](https://github.com/ddmms/process_omol25/actions/workflows/publish.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/publish.yml)
-[![Zenodo Publish](https://github.com/ddmms/process_omol25/actions/workflows/publish.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/publish.yml)
+[![Zenodo Publish](https://github.com/ddmms/process_omol25/actions/workflows/publish-zenodo.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/publish-zenodo.yml)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)
 
 A Python package for processing omol-25 data using MPI.
 

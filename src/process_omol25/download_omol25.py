@@ -1,5 +1,6 @@
 import argparse
 import logging
+from typing import List, Dict, Any, Optional, Union
 from pathlib import Path
 from json import load as json_load, dump as json_dump
 from io import BytesIO
@@ -18,7 +19,7 @@ from mpi4py import MPI as mpi
 logger = logging.getLogger(__name__)
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Download and extract molecular data asynchronously via Manager/Worker."
     )
@@ -67,7 +68,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def process_prefix(x, data, args, s3_client):
+def process_prefix(x: str, data: Dict[str, Any], args: argparse.Namespace, s3_client: Any) -> Optional[str]:
     """Processes a single prefix synchronously."""
     raw_key = data[x]["key"]
     key_list = [raw_key] if isinstance(raw_key, str) else raw_key
@@ -99,7 +100,7 @@ def process_prefix(x, data, args, s3_client):
     return x if success else None
 
 
-def extract_buffer(buffer: BytesIO, x: str, k: str):
+def extract_buffer(buffer: BytesIO, x: str, k: str) -> None:
     """Decompresses and extracts the buffer to disk."""
     try:
         decompressor = ZstdDecompressor()
@@ -139,7 +140,7 @@ def extract_buffer(buffer: BytesIO, x: str, k: str):
         raise
 
 
-def manager_loop(keys, data, restart_file, comm, size):
+def manager_loop(keys: List[str], data: Dict[str, Any], restart_file: Union[str, Path], comm: Any, size: int) -> None:
     """Rank 0 Dispatcher for downloads (Synchronous)."""
     start_time = time.time()
     logger.info(f"Download Manager starting with {size - 1} workers.")
@@ -176,7 +177,7 @@ def manager_loop(keys, data, restart_file, comm, size):
     logger.info(f"Download complete in {time.time() - start_time:.2f} seconds.")
 
 
-def worker_loop(data, args, comm):
+def worker_loop(data: Dict[str, Any], args: argparse.Namespace, comm: Any) -> None:
     """Rank > 0 Downloader (Synchronous)."""
     s3_client = None
     if not args.local_dir:
@@ -205,7 +206,7 @@ def worker_loop(data, args, comm):
         pass
 
 
-def download_serial(keys, data, args):
+def download_serial(keys: List[str], data: Dict[str, Any], args: argparse.Namespace) -> None:
     """Serial download (Synchronous)."""
     start_time = time.time()
     s3_client = None
@@ -231,7 +232,7 @@ def download_serial(keys, data, args):
         pass
 
 
-def main():
+def main() -> None:
     args = parse_args()
 
     if args.mpi:

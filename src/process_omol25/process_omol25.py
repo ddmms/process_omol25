@@ -1,3 +1,4 @@
+import argparse
 import logging
 import sys
 import os
@@ -18,7 +19,7 @@ import boto3
 from botocore.config import Config
 from tarfile import open as tar_open
 from zstandard import ZstdDecompressor
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List, Union
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -60,7 +61,7 @@ RE_QUAD = re.compile(
 )
 
 
-def parse_quadrupole(txt: str):
+def parse_quadrupole(txt: str) -> Optional[Tuple[float, float, float, float, float, float, float]]:
     if not txt:
         return None
     match = RE_QUAD.search(txt)
@@ -74,7 +75,7 @@ def parse_quadrupole(txt: str):
     return None
 
 
-def parse_dipole(txt: str):
+def parse_dipole(txt: str) -> Optional[Tuple[float, float, float, float]]:
     if not txt:
         return None
     best = None
@@ -257,22 +258,23 @@ def parse_eigens(txt: str) -> Optional[Dict[str, Any]]:
 logger = logging.getLogger(__name__)
 
 
-def setup_logging(level=logging.INFO, log_file_path="sample.log"):
+def setup_logging(level: int = logging.INFO, log_file_path: Optional[Union[str, Path]] = None) -> None:
     """Configures the root logger with a console handler and an optional file handler."""
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     formatter = logging.Formatter(log_format)
 
-    handlers = []
+    # Console handler (to stdout for tests to capture)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    handlers = [console_handler]
+    status_msg = "Console only"
+
     if log_file_path:
-        file_handler = logging.FileHandler(log_file_path, mode="a")
+        p = Path(log_file_path)
+        file_handler = logging.FileHandler(p, mode="a")
         file_handler.setFormatter(formatter)
         handlers.append(file_handler)
-        status_msg = f"Logfile: {log_file_path.resolve()}"
-    else:
-        stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setFormatter(formatter)
-        handlers.append(stream_handler)
-        status_msg = "Console only"
+        status_msg = f"Logfile: {p.resolve()}"
 
     # Configure root logger
     root_logger = logging.getLogger()
@@ -287,7 +289,7 @@ def setup_logging(level=logging.INFO, log_file_path="sample.log"):
     )
 
 
-def get_ranges(n, size):
+def get_ranges(n: int, size: int) -> List[Tuple[int, int]]:
     share = n // size
     rem = n % size
     ranges = []
@@ -304,7 +306,7 @@ class S3DataProcessor:
     Manages molecular data processing using an asynchronous Manager/Worker pattern.
     """
 
-    def __init__(self, args, rank, size, comm):
+    def __init__(self, args: argparse.Namespace, rank: int, size: int, comm: Any) -> None:
         self.args = args
         self.rank = rank
         self.size = size
@@ -451,7 +453,7 @@ class S3DataProcessor:
         if self.rank == 0:
             logger.info(f"Using flush batch size of {self.batch_size}")
 
-    def flush_recs(self, recs, all_atoms=None):
+    def flush_recs(self, recs: List[Dict[str, Any]], all_atoms: Optional[List[Any]] = None) -> None:
         """Flush a batch of records to Parquet, and optionally atoms to ExtXYZ."""
         if not recs:
             return
@@ -469,7 +471,7 @@ class S3DataProcessor:
             write(str(xyz_path), all_atoms, format="extxyz")
         self.chunk_idx += 1
 
-    def _process_buffer(self, buffer: BytesIO, x: str):
+    def _process_buffer(self, buffer: BytesIO, x: str) -> Optional[Tuple[Dict[str, Any], Any]]:
         """Parse a .tar.zst buffer; returns (rec dict, ASE Atoms) or None."""
         rec: Dict[str, Any] = {}
         try:
@@ -579,7 +581,7 @@ class S3DataProcessor:
             logger.error(f"Error parsing buffer for {x}: {e}")
             return None
 
-    def process_single(self, idx: int, s3_client=None):
+    def process_single(self, idx: int, s3_client: Any = None) -> Optional[Tuple[Dict[str, Any], Any, str]]:
         """Processes a single task synchronously. Returns (rec, atoms, x) or None."""
         start_time = time.time()
         x = self.prefixes[idx]
@@ -622,7 +624,7 @@ class S3DataProcessor:
             logger.error(f"Error processing {source}: {e}")
             return None
 
-    def _manager_loop(self):
+    def _manager_loop(self) -> None:
         """Rank 0 Result Collector loop (Hybrid RMA)."""
         start_time = time.time()
         num_tasks = len(self.indices_to_process)
@@ -664,7 +666,7 @@ class S3DataProcessor:
         logger.info("Manager complete. Merging results...")
         self._final_merge(elapsed)
 
-    def _worker_loop(self):
+    def _worker_loop(self) -> None:
         """Rank > 0 Processing loop (Hybrid RMA)."""
         s3_client = None
         if not self.local_dir:
@@ -724,7 +726,7 @@ class S3DataProcessor:
             logger.error(f"Worker {self.rank} crashed: {e}")
             self.comm.send("DONE", dest=0, tag=TAG_DONE)
 
-    def _final_merge(self, elapsed_time):
+    def _final_merge(self, elapsed_time: float) -> None:
         """Merges per-rank part files into single Parquet and ExtXYZ outputs."""
 
         # --- Parquet merge ---
@@ -781,7 +783,7 @@ class S3DataProcessor:
                 f"Merged ExtXYZ into {output_xyz_final} ({len(all_atoms)} structures)"
             )
 
-    def run_mpi(self):
+    def run_mpi(self) -> None:
         """Main entry point for MPI runs (Hybrid RMA)."""
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
@@ -814,7 +816,7 @@ class S3DataProcessor:
             self.win.Free()
             logger.info(f"Rank {self.rank} exiting clean.")
 
-    def run_serial(self):
+    def run_serial(self) -> None:
         """Standard serial fallback (Synchronous)."""
         start_time = time.time()
         s3_client = None

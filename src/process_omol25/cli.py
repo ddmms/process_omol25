@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+from typing import Any
 
 os.environ["ASE_MPI"] = "0"
 from pathlib import Path
@@ -11,7 +12,7 @@ from mpi4py import MPI as mpi
 logger = logging.getLogger(__name__)
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """
     Parse command-line arguments for the main processing script.
 
@@ -100,7 +101,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     """
     Main entry point for molecular data processing.
 

@@ -23,7 +23,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pre-commit"
+    "pre-commit",
+    "pytest-cov"
 ]
 
 [project.scripts]
@@ -35,3 +36,4 @@ verify_processed_omol25 = "process_omol25.verify_processed_omol25:main"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = "--cov=src --cov-report=term-missing"

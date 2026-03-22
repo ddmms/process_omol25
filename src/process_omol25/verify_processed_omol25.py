@@ -13,13 +13,14 @@ from collections import defaultdict
 
 import pandas as pd
 import numpy as np
+from typing import Any, Optional, Union, Dict, List
 from ase.io import read
 
 try:
     from .process_omol25 import setup_logging
 except ImportError:
     # Fallback for if it's run as a standalone script outside the package
-    def setup_logging(level=logging.INFO, **kwargs):
+    def setup_logging(level: int = logging.INFO, **kwargs: Any) -> None:
         """
         Setup basic logging configuration for standalone execution.
 
@@ -38,7 +39,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """
     Parse command-line arguments for the verification script.
 
@@ -71,7 +72,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     """
     Main entry point for verifying Parquet and ExtXYZ consistency.
 
