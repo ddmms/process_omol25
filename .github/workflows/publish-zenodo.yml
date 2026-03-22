@@ -1,0 +1,29 @@
+name: Publish to Zenodo
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-zenodo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Verify Version
+        run: |
+          VERSION=$(uvx --from=toml-cli toml get --toml-path=pyproject.toml project.version)
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "$VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch: pyproject.toml ($VERSION) vs Tag ($TAG_VERSION)"
+            exit 1
+          fi
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          generateReleaseNotes: true
+          token: ${{ secrets.GITHUB_TOKEN }}
