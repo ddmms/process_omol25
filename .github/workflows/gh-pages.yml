@@ -7,21 +7,17 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
   build-docs:
     runs-on: ubuntu-latest
-    if: github.repository == 'ddmms/process_omol25' && startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'ddmms/process_omol25'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
     concurrency:
       group: "pages"
       cancel-in-progress: True
@@ -41,13 +37,12 @@ jobs:
         run: uv sync --extra docs
 
       - name: Build docs with tutorials
-        run: cd docs && uv run make all
+        run: cd docs && uv run make html
 
       - name: Upload
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: './docs/build/html/.'
+          path: './docs/_build/html/'
 
       - name: Deploy to GitHub Pages
         id: deployment
