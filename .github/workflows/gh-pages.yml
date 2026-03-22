@@ -12,27 +12,43 @@ permissions:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  build-docs:
+    runs-on: ubuntu-latest
+    if: github.repository == 'ddmms/process_omol25' && startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: "pages"
+      cancel-in-progress: True
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pandoc
+        uses: pandoc/actions/setup@v1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          pip install -e .
-          pip install sphinx sphinx-material
+        run: uv sync --extra all
 
-      - name: Build Sphinx Documentation
-        run: |
-          cd docs
-          make html
+      - name: Build docs with tutorials
+        run: cd docs && uv run make all
+
+      - name: Upload
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload entire repository
+          path: './docs/build/html/.'
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/_build/html
+        id: deployment
+        uses: actions/deploy-pages@v4

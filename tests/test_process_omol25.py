@@ -269,7 +269,8 @@ def test_process_omol25_restart_mpi():
         "2",
         "--mpi",
     ]
-    subprocess.run(cmd1, capture_output=True, text=True)
+    result1 = subprocess.run(cmd1, capture_output=True, text=True)
+    assert result1.returncode == 0, f"MPI run 1 failed:\n{result1.stderr}"
 
     # Check restart file: at least some should be marked processed
     assert restart_file.exists()
@@ -481,6 +482,7 @@ def test_restart_5ranks_matches_serial():
         ],
         capture_output=True,
         text=True,
+        check=True
     )
     assert result.returncode == 0, f"Serial run failed:\n{result.stderr}"
 
@@ -517,6 +519,7 @@ def test_restart_5ranks_matches_serial():
         base_cmd + ["--data-source", str(data_source), "--sample-size", str(half)],
         capture_output=True,
         text=True,
+        check=True
     )
     assert r1.returncode == 0, f"MPI phase-1 failed:\n{r1.stderr}"
     assert restart_file.exists(), "Restart file not created after phase 1"
@@ -526,6 +529,7 @@ def test_restart_5ranks_matches_serial():
         base_cmd + ["--data-source", str(restart_file), "--restart"],
         capture_output=True,
         text=True,
+        check=True
     )
     assert r2.returncode == 0, f"MPI phase-2 failed:\n{r2.stderr}"
 
