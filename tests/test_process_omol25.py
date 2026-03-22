@@ -6,12 +6,13 @@ import io
 from pathlib import Path
 from zstandard import ZstdCompressor
 
+
 def create_mock_data(local_dir: Path, data_source: Path):
     """Creates a mock data structure on disk for testing."""
     local_dir.mkdir(parents=True, exist_ok=True)
     with open(data_source, "r") as f:
         data = json.load(f)
-    
+
     # Minimal ORCA output that passes the parser
     mock_orca_out = """
     -------------------------------------------------------------------------------
@@ -34,7 +35,7 @@ def create_mock_data(local_dir: Path, data_source: Path):
     -----------------------
     EIGENVALUES
     -----------------------
-    NO  OCC          E(Eh)            E(eV) 
+    NO  OCC          E(Eh)            E(eV)
      0  2.0000      -0.5000         -13.6057
      1  0.0000       0.2000           5.4423
     -------------------------
@@ -44,67 +45,80 @@ def create_mock_data(local_dir: Path, data_source: Path):
     mock_orca_inp = "* xyz 0 1"
 
     c = ZstdCompressor()
-    
+
     for prefix, info in data.items():
-        key = info['key']
+        key = info["key"]
         # If key is string, it's a tar.zst. If list, handle each.
         keys = [key] if isinstance(key, str) else key
-        
+
         for k in keys:
             source_path = local_dir / prefix / k
             source_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             if k.endswith(".tar.zst"):
                 tar_buffer = io.BytesIO()
                 with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
-                    for name, content in [("orca.out", mock_orca_out), 
-                                         ("orca.inp", mock_orca_inp), 
-                                         ("orca.property.txt", mock_property)]:
+                    for name, content in [
+                        ("orca.out", mock_orca_out),
+                        ("orca.inp", mock_orca_inp),
+                        ("orca.property.txt", mock_property),
+                    ]:
                         info_tar = tarfile.TarInfo(name=name)
                         info_tar.size = len(content)
-                        tar.addfile(info_tar, io.BytesIO(content.encode('utf-8')))
-                
+                        tar.addfile(info_tar, io.BytesIO(content.encode("utf-8")))
+
                 compressed = c.compress(tar_buffer.getvalue())
                 source_path.write_bytes(compressed)
             else:
                 # Just write a dummy file for non-tar keys if any
                 source_path.write_bytes(b"dummy")
 
+
 def test_process_omol25_mpi():
     out_dir = Path("test_output_dir")
     local_data_dir = Path("mock_s3_data")
     test_data_source = Path("test_noble_gas_prefix.json")
-    
+
     # Cleanup
     for d in [out_dir, local_data_dir]:
         if d.exists():
-            for p in sorted(d.rglob('*'), reverse=True):
+            for p in sorted(d.rglob("*"), reverse=True):
                 p.unlink() if p.is_file() else p.rmdir()
             d.rmdir()
-    
+
     # Setup
-    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    Path(test_data_source).write_bytes(
+        Path("data/noble_gas_compounds_prefix.json").read_bytes()
+    )
     create_mock_data(local_data_dir, test_data_source)
-    
+
     cmd = [
-        "mpirun", "--oversubscribe", "-n", "2", 
-        sys.executable, "-m", "process_omol25.cli",
-        "--data-source", str(test_data_source),
-        "--output-dir", str(out_dir),
-        "--local-dir", str(local_data_dir),
-        "--mpi"
+        "mpirun",
+        "--oversubscribe",
+        "-n",
+        "2",
+        sys.executable,
+        "-m",
+        "process_omol25.cli",
+        "--data-source",
+        str(test_data_source),
+        "--output-dir",
+        str(out_dir),
+        "--local-dir",
+        str(local_data_dir),
+        "--mpi",
     ]
-    
+
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, f"Command failed: {result.stderr}"
-    
+
     expected_out = out_dir / "props_test_noble_gas.parquet"
     assert expected_out.exists()
-    
+
     # Cleanup
     for d in [out_dir, local_data_dir]:
         if d.exists():
-            for p in sorted(d.rglob('*'), reverse=True):
+            for p in sorted(d.rglob("*"), reverse=True):
                 p.unlink() if p.is_file() else p.rmdir()
             d.rmdir()
     test_data_source.unlink(missing_ok=True)
@@ -115,35 +129,42 @@ def test_process_omol25_no_mpi():
     out_dir = Path("test_output_dir_no_mpi")
     local_data_dir = Path("mock_s3_data_no_mpi")
     test_data_source = Path("test_noble_gas_prefix_no_mpi.json")
-    
+
     # Cleanup
     for d in [out_dir, local_data_dir]:
         if d.exists():
-            for p in sorted(d.rglob('*'), reverse=True):
+            for p in sorted(d.rglob("*"), reverse=True):
                 p.unlink() if p.is_file() else p.rmdir()
             d.rmdir()
-            
+
     # Setup
-    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    Path(test_data_source).write_bytes(
+        Path("data/noble_gas_compounds_prefix.json").read_bytes()
+    )
     create_mock_data(local_data_dir, test_data_source)
-    
+
     cmd = [
-        sys.executable, "-m", "process_omol25.cli",
-        "--data-source", str(test_data_source),
-        "--output-dir", str(out_dir),
-        "--local-dir", str(local_data_dir)
+        sys.executable,
+        "-m",
+        "process_omol25.cli",
+        "--data-source",
+        str(test_data_source),
+        "--output-dir",
+        str(out_dir),
+        "--local-dir",
+        str(local_data_dir),
     ]
-    
+
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, f"Command failed: {result.stderr}"
-    
+
     expected_out = out_dir / "props_test_noble_gas_no_mpi.parquet"
     assert expected_out.exists()
-    
+
     # Cleanup
     for d in [out_dir, local_data_dir]:
         if d.exists():
-            for p in sorted(d.rglob('*'), reverse=True):
+            for p in sorted(d.rglob("*"), reverse=True):
                 p.unlink() if p.is_file() else p.rmdir()
             d.rmdir()
     test_data_source.unlink(missing_ok=True)
@@ -153,49 +174,56 @@ def test_process_omol25_no_mpi():
 def test_download_omol25():
     local_data_dir = Path("mock_s3_data_download")
     test_data_source = Path("test_download_prefix.json")
-    
+
     # Cleanup
     if local_data_dir.exists():
-        for p in sorted(local_data_dir.rglob('*'), reverse=True):
+        for p in sorted(local_data_dir.rglob("*"), reverse=True):
             p.unlink() if p.is_file() else p.rmdir()
         local_data_dir.rmdir()
 
     # Setup
-    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    Path(test_data_source).write_bytes(
+        Path("data/noble_gas_compounds_prefix.json").read_bytes()
+    )
     create_mock_data(local_data_dir, test_data_source)
-    
+
     cmd = [
-        sys.executable, "-m", "process_omol25.download_omol25",
-        "--data-source", str(test_data_source),
-        "--local-dir", str(local_data_dir),
-        "--sample-size", "1"
+        sys.executable,
+        "-m",
+        "process_omol25.download_omol25",
+        "--data-source",
+        str(test_data_source),
+        "--local-dir",
+        str(local_data_dir),
+        "--sample-size",
+        "1",
     ]
-    
+
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, f"Command failed: {result.stderr}"
-    
-    # Check if a file was extracted. 
+
+    # Check if a file was extracted.
     expected_file = Path("noble_gas_compounds/FXeNSO2F2_step20_0_1/orca.out")
     assert expected_file.exists()
-    
+
     # Cleanup
     if local_data_dir.exists():
-        for p in sorted(local_data_dir.rglob('*'), reverse=True):
+        for p in sorted(local_data_dir.rglob("*"), reverse=True):
             p.unlink() if p.is_file() else p.rmdir()
         local_data_dir.rmdir()
-    
+
     with open(test_data_source, "r") as f:
         data = json.load(f)
     for prefix in data:
         p = Path(prefix)
         if p.exists():
-            for sub in sorted(p.rglob('*'), reverse=True):
+            for sub in sorted(p.rglob("*"), reverse=True):
                 sub.unlink() if sub.is_file() else sub.rmdir()
             try:
                 p.rmdir()
             except OSError:
-                pass # Might not be empty if multiple tests ran
-            
+                pass  # Might not be empty if multiple tests ran
+
     test_data_source.unlink(missing_ok=True)
     Path("test_download_prefix_restart.json").unlink(missing_ok=True)
 
@@ -205,63 +233,82 @@ def test_process_omol25_restart_mpi():
     local_data_dir = Path("mock_s3_data_restart")
     test_data_source = Path("test_restart_prefix.json")
     restart_file = Path("test_restart_prefix_restart.json")
-    
+
     # Cleanup
     for p in [out_dir, local_data_dir, test_data_source, restart_file]:
         if p.exists():
             if p.is_dir():
-                for sub in sorted(p.rglob('*'), reverse=True):
+                for sub in sorted(p.rglob("*"), reverse=True):
                     sub.unlink() if sub.is_file() else sub.rmdir()
                 p.rmdir()
             else:
                 p.unlink()
-    
+
     # Setup
-    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    Path(test_data_source).write_bytes(
+        Path("data/noble_gas_compounds_prefix.json").read_bytes()
+    )
     create_mock_data(local_data_dir, test_data_source)
-    
+
     # Run 1: process only 2 samples
     cmd1 = [
-        "mpirun", "--oversubscribe", "-n", "2",
-        sys.executable, "-m", "process_omol25.cli",
-        "--data-source", str(test_data_source),
-        "--output-dir", str(out_dir),
-        "--local-dir", str(local_data_dir),
-        "--sample-size", "2",
-        "--mpi"
+        "mpirun",
+        "--oversubscribe",
+        "-n",
+        "2",
+        sys.executable,
+        "-m",
+        "process_omol25.cli",
+        "--data-source",
+        str(test_data_source),
+        "--output-dir",
+        str(out_dir),
+        "--local-dir",
+        str(local_data_dir),
+        "--sample-size",
+        "2",
+        "--mpi",
     ]
     subprocess.run(cmd1, capture_output=True, text=True)
-    
+
     # Check restart file: at least some should be marked processed
     assert restart_file.exists()
     with open(restart_file, "r") as f:
         data = json.load(f)
     processed_count = sum(1 for v in data.values() if v.get("processed"))
     assert processed_count == 2
-    
+
     # Run 2: resume remaining samples
     cmd2 = [
-        "mpirun", "--oversubscribe", "-n", "2",
-        sys.executable, "-m", "process_omol25.cli",
-        "--data-source", str(restart_file),
-        "--output-dir", str(out_dir),
-        "--local-dir", str(local_data_dir),
+        "mpirun",
+        "--oversubscribe",
+        "-n",
+        "2",
+        sys.executable,
+        "-m",
+        "process_omol25.cli",
+        "--data-source",
+        str(restart_file),
+        "--output-dir",
+        str(out_dir),
+        "--local-dir",
+        str(local_data_dir),
         "--restart",
-        "--mpi"
+        "--mpi",
     ]
     result = subprocess.run(cmd2, capture_output=True, text=True)
     assert result.returncode == 0
-    
+
     # Final check: all should be processed in the restart file
     with open(restart_file, "r") as f:
         data = json.load(f)
     assert all(v.get("processed") for v in data.values())
-    
+
     # Cleanup
     for p in [out_dir, local_data_dir, test_data_source, restart_file]:
         if p.exists():
             if p.is_dir():
-                for sub in sorted(p.rglob('*'), reverse=True):
+                for sub in sorted(p.rglob("*"), reverse=True):
                     sub.unlink() if sub.is_file() else sub.rmdir()
                 p.rmdir()
             else:
@@ -282,22 +329,29 @@ def test_extxyz_props_consistency():
     # Cleanup
     for d in [out_dir, local_data_dir]:
         if d.exists():
-            for p in sorted(d.rglob('*'), reverse=True):
+            for p in sorted(d.rglob("*"), reverse=True):
                 p.unlink() if p.is_file() else p.rmdir()
             d.rmdir()
     test_data_source.unlink(missing_ok=True)
     Path("test_extxyz_prefix_restart.json").unlink(missing_ok=True)
 
     # Setup: use the small prefix fixture
-    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    Path(test_data_source).write_bytes(
+        Path("data/noble_gas_compounds_prefix.json").read_bytes()
+    )
     create_mock_data(local_data_dir, test_data_source)
 
     # Run serial (no mpirun) to get a single pair of output files
     cmd = [
-        sys.executable, "-m", "process_omol25.cli",
-        "--data-source", str(test_data_source),
-        "--output-dir", str(out_dir),
-        "--local-dir", str(local_data_dir),
+        sys.executable,
+        "-m",
+        "process_omol25.cli",
+        "--data-source",
+        str(test_data_source),
+        "--output-dir",
+        str(out_dir),
+        "--local-dir",
+        str(local_data_dir),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, f"Serial run failed:\n{result.stderr}"
@@ -309,6 +363,7 @@ def test_extxyz_props_consistency():
     assert len(xyz_files) == 1, f"Expected 1 merged XYZ, got: {xyz_files}"
     # Confirm the merged names have no rank/part suffix (no underscore-digit pattern after group name)
     import re
+
     for f in parquet_files + xyz_files:
         assert not re.search(r"_\d+(_part_\d+)?\.(parquet|xyz)$", f.name), (
             f"Part/rank file was not merged: {f.name}"
@@ -345,8 +400,12 @@ def test_extxyz_props_consistency():
             if key in skip_keys or key not in info:
                 continue
             xyz_val = info[key]
-            pq_is_nan = pq_val is None or (isinstance(pq_val, float) and math.isnan(pq_val))
-            xyz_is_nan = xyz_val is None or (isinstance(xyz_val, float) and math.isnan(xyz_val))
+            pq_is_nan = pq_val is None or (
+                isinstance(pq_val, float) and math.isnan(pq_val)
+            )
+            xyz_is_nan = xyz_val is None or (
+                isinstance(xyz_val, float) and math.isnan(xyz_val)
+            )
             if pq_is_nan:
                 assert xyz_is_nan, (
                     f"sha={sha} key={key}: Parquet=NaN/None but XYZ={xyz_val!r}"
@@ -359,7 +418,7 @@ def test_extxyz_props_consistency():
     # Cleanup
     for d in [out_dir, local_data_dir]:
         if d.exists():
-            for p in sorted(d.rglob('*'), reverse=True):
+            for p in sorted(d.rglob("*"), reverse=True):
                 p.unlink() if p.is_file() else p.rmdir()
             d.rmdir()
     test_data_source.unlink(missing_ok=True)
@@ -379,18 +438,18 @@ def test_restart_5ranks_matches_serial():
         for p in paths:
             if p.exists():
                 if p.is_dir():
-                    for sub in sorted(p.rglob('*'), reverse=True):
+                    for sub in sorted(p.rglob("*"), reverse=True):
                         sub.unlink() if sub.is_file() else sub.rmdir()
                     p.rmdir()
                 else:
                     p.unlink()
 
     # ---- paths ----
-    serial_dir      = Path("test_restart5_serial_out")
-    mpi_dir         = Path("test_restart5_mpi_out")
-    local_data_dir  = Path("mock_s3_data_restart5")
-    data_source     = Path("test_restart5_prefix.json")
-    restart_file    = Path("test_restart5_prefix_restart.json")
+    serial_dir = Path("test_restart5_serial_out")
+    mpi_dir = Path("test_restart5_mpi_out")
+    local_data_dir = Path("mock_s3_data_restart5")
+    data_source = Path("test_restart5_prefix.json")
+    restart_file = Path("test_restart5_prefix_restart.json")
 
     cleanup(serial_dir, mpi_dir, local_data_dir, data_source, restart_file)
 
@@ -399,47 +458,65 @@ def test_restart_5ranks_matches_serial():
     create_mock_data(local_data_dir, data_source)
 
     import json
+
     with open(data_source) as f:
         n_total = len(json.load(f))
-    half = n_total // 2          # first MPI pass processes this many
-    rest = n_total - half         # second MPI pass (restart) picks up the remainder
+    half = n_total // 2  # first MPI pass processes this many
+    rest = n_total - half  # second MPI pass (restart) picks up the remainder
 
     # ======================================================
     # 1. Serial run – ground truth
     # ======================================================
-    result = subprocess.run([
-        sys.executable, "-m", "process_omol25.cli",
-        "--data-source", str(data_source),
-        "--output-dir",  str(serial_dir),
-        "--local-dir",   str(local_data_dir),
-    ], capture_output=True, text=True)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "process_omol25.cli",
+            "--data-source",
+            str(data_source),
+            "--output-dir",
+            str(serial_dir),
+            "--local-dir",
+            str(local_data_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, f"Serial run failed:\n{result.stderr}"
 
     serial_parquet = list(serial_dir.glob("props_*.parquet"))
-    serial_xyz     = list(serial_dir.glob("structs_*.xyz"))
+    serial_xyz = list(serial_dir.glob("structs_*.xyz"))
     assert len(serial_parquet) == 1, f"Expected 1 merged Parquet, got {serial_parquet}"
-    assert len(serial_xyz)     == 1, f"Expected 1 merged XYZ, got {serial_xyz}"
+    assert len(serial_xyz) == 1, f"Expected 1 merged XYZ, got {serial_xyz}"
 
-    serial_df   = pd.read_parquet(serial_parquet[0])
-    serial_ats  = ase.io.read(str(serial_xyz[0]), index=":")
-    serial_pq_by_sha  = {r["geom_sha1"]: r for _, r in serial_df.iterrows()}
+    serial_df = pd.read_parquet(serial_parquet[0])
+    serial_ats = ase.io.read(str(serial_xyz[0]), index=":")
+    serial_pq_by_sha = {r["geom_sha1"]: r for _, r in serial_df.iterrows()}
     serial_xyz_by_sha = {at.info["geom_sha1"]: at for at in serial_ats}
 
     # ======================================================
     # 2. MPI restart run in two phases
     # ======================================================
     base_cmd = [
-        "mpirun", "--oversubscribe", "-n", "5",
-        sys.executable, "-m", "process_omol25.cli",
-        "--output-dir",  str(mpi_dir),
-        "--local-dir",   str(local_data_dir),
+        "mpirun",
+        "--oversubscribe",
+        "-n",
+        "5",
+        sys.executable,
+        "-m",
+        "process_omol25.cli",
+        "--output-dir",
+        str(mpi_dir),
+        "--local-dir",
+        str(local_data_dir),
         "--mpi",
     ]
 
     # Phase 1: process first `half` items
     r1 = subprocess.run(
         base_cmd + ["--data-source", str(data_source), "--sample-size", str(half)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert r1.returncode == 0, f"MPI phase-1 failed:\n{r1.stderr}"
     assert restart_file.exists(), "Restart file not created after phase 1"
@@ -447,18 +524,19 @@ def test_restart_5ranks_matches_serial():
     # Phase 2: continue from restart file (picks up remaining items)
     r2 = subprocess.run(
         base_cmd + ["--data-source", str(restart_file), "--restart"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert r2.returncode == 0, f"MPI phase-2 failed:\n{r2.stderr}"
 
     mpi_parquet = list(mpi_dir.glob("props_*.parquet"))
-    mpi_xyz     = list(mpi_dir.glob("structs_*.xyz"))
+    mpi_xyz = list(mpi_dir.glob("structs_*.xyz"))
     assert len(mpi_parquet) == 1, f"Expected 1 merged Parquet, got {mpi_parquet}"
-    assert len(mpi_xyz)     == 1, f"Expected 1 merged XYZ, got {mpi_xyz}"
+    assert len(mpi_xyz) == 1, f"Expected 1 merged XYZ, got {mpi_xyz}"
 
-    mpi_df   = pd.read_parquet(mpi_parquet[0])
-    mpi_ats  = ase.io.read(str(mpi_xyz[0]), index=":")
-    mpi_pq_by_sha  = {r["geom_sha1"]: r for _, r in mpi_df.iterrows()}
+    mpi_df = pd.read_parquet(mpi_parquet[0])
+    mpi_ats = ase.io.read(str(mpi_xyz[0]), index=":")
+    mpi_pq_by_sha = {r["geom_sha1"]: r for _, r in mpi_df.iterrows()}
     mpi_xyz_by_sha = {at.info["geom_sha1"]: at for at in mpi_ats}
 
     # ======================================================
@@ -508,46 +586,57 @@ def test_restart_5ranks_matches_serial():
     # ---- cleanup ----
     cleanup(serial_dir, mpi_dir, local_data_dir, data_source, restart_file)
 
+
 def test_download_omol25_mpi():
     out_dir = Path("test_output_dir_download_mpi")
     local_data_dir = Path("mock_s3_data_download_mpi")
     test_data_source = Path("test_download_prefix_mpi.json")
-    
+
     # Cleanup
     for d in [out_dir, local_data_dir]:
         if d.exists():
-            for p in sorted(d.rglob('*'), reverse=True):
+            for p in sorted(d.rglob("*"), reverse=True):
                 p.unlink() if p.is_file() else p.rmdir()
             d.rmdir()
 
     # Setup
-    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    Path(test_data_source).write_bytes(
+        Path("data/noble_gas_compounds_prefix.json").read_bytes()
+    )
     create_mock_data(local_data_dir, test_data_source)
-    
+
     cmd = [
-        "mpirun", "--oversubscribe", "-n", "2",
-        sys.executable, "-m", "process_omol25.download_omol25",
-        "--data-source", str(test_data_source),
-        "--local-dir", str(local_data_dir),
-        "--sample-size", "2",
-        "--mpi"
+        "mpirun",
+        "--oversubscribe",
+        "-n",
+        "2",
+        sys.executable,
+        "-m",
+        "process_omol25.download_omol25",
+        "--data-source",
+        str(test_data_source),
+        "--local-dir",
+        str(local_data_dir),
+        "--sample-size",
+        "2",
+        "--mpi",
     ]
-    
+
     result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, f"Command failed: {result.stderr}"
-    
-    # Check if a file was extracted. 
+
+    # Check if a file was extracted.
     expected_file = Path("noble_gas_compounds/FXeNSO2F2_step20_0_1/orca.out")
     assert expected_file.exists()
-    
+
     # Check restart file:
     restart_file = Path("test_download_prefix_mpi_restart.json")
     assert restart_file.exists(), f"Restart file {restart_file} was not created"
-    
+
     # Cleanup
     for d in [out_dir, local_data_dir]:
         if d.exists():
-            for p in sorted(d.rglob('*'), reverse=True):
+            for p in sorted(d.rglob("*"), reverse=True):
                 p.unlink() if p.is_file() else p.rmdir()
             d.rmdir()
     test_data_source.unlink(missing_ok=True)

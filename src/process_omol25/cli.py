@@ -1,11 +1,14 @@
 import argparse
 import logging
 import os
-os.environ['ASE_MPI'] = '0'
+
+os.environ["ASE_MPI"] = "0"
 from pathlib import Path
 
 from .process_omol25 import S3DataProcessor, setup_logging
 from mpi4py import MPI as mpi
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -66,42 +69,42 @@ def parse_args():
     parser.add_argument(
         "--restart",
         action="store_true",
-        help="Skip configurations marked as processed in --data-source")
+        help="Skip configurations marked as processed in --data-source",
+    )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=None,
-        help="Batch size to flush to disk. Defaults to 1% of tasks per worker.")
+        help="Batch size to flush to disk. Defaults to 1 percent of tasks per worker.",
+    )
     parser.add_argument(
         "--memory-threshold-gb",
         type=float,
         default=2.0,
-        help="Memory threshold in GB to flush records to disk.")
+        help="Memory threshold in GB to flush records to disk.",
+    )
     parser.add_argument(
         "--local-dir",
         type=Path,
         default=None,
-        help="Optional local directory to read data from instead of S3.")
-    parser.add_argument(
-        "--mpi",
-        action="store_true",
-        help="Run using MPI.")
+        help="Optional local directory to read data from instead of S3.",
+    )
+    parser.add_argument("--mpi", action="store_true", help="Run using MPI.")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
+    # Determine rank early for logging setup
     if args.mpi:
         comm = mpi.COMM_WORLD
         rank = comm.Get_rank()
         size = comm.Get_size()
-        print(f"MPI enabled: rank={rank}, size={size}")
     else:
         comm = None
         rank = 0
         size = 1
-        print("MPI disabled: running in serial mode")
 
     log_level_map = {
         "DEBUG": logging.DEBUG,
@@ -110,32 +113,20 @@ def main():
         "ERROR": logging.ERROR,
         "CRITICAL": logging.CRITICAL,
     }
-    if rank == 0 :
-        logfile = args.log_file if args.log_file else Path(args.data_source.stem + ".log")
+
+    if rank == 0:
+        logfile = (
+            args.log_file if args.log_file else Path(args.data_source.stem + ".log")
+        )
         setup_logging(
             level=log_level_map.get(args.log_level.upper(), logging.INFO),
-            log_file_path=logfile
+            log_file_path=logfile,
         )
 
-    if not args.local_dir and not args.login_file:
-        raise ValueError("--login-file is required when --local-dir is not specified.")
-
-    processor = S3DataProcessor(args, rank, size, comm)
-    processor.run_mpi()
-
-    log_level_map = {
-        "DEBUG": logging.DEBUG,
-        "INFO": logging.INFO,
-        "WARNING": logging.WARNING,
-        "ERROR": logging.ERROR,
-        "CRITICAL": logging.CRITICAL,
-    }
-    if rank == 0 :
-        logfile = args.log_file if args.log_file else Path(args.data_source.stem + ".log")
-        setup_logging(
-            level=log_level_map.get(args.log_level.upper(), logging.INFO),
-            log_file_path=logfile
-        )
+    if args.mpi:
+        logger.info(f"MPI enabled: rank={rank}, size={size}")
+    else:
+        logger.info("MPI disabled: running in serial mode")
 
     if not args.local_dir and not args.login_file:
         raise ValueError("--login-file is required when --local-dir is not specified.")

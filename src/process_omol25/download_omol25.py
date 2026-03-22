@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Download and extract molecular data asynchronously via Manager/Worker.")
+    parser = argparse.ArgumentParser(
+        description="Download and extract molecular data asynchronously via Manager/Worker."
+    )
     parser.add_argument(
         "--login-file",
         type=Path,
@@ -27,12 +29,27 @@ def parse_args():
         default=None,
         help="Path to credentials JSON.",
     )
-    parser.add_argument("--bucket", type=str, default="omol-25-small", help="S3 bucket.")
-    parser.add_argument("--data-source", type=Path, required=True, help="JSON file with keys.")
-    parser.add_argument("--sample-size", type=int, default=-1, help="Number of samples to run.")
+    parser.add_argument(
+        "--bucket", type=str, default="omol-25-small", help="S3 bucket."
+    )
+    parser.add_argument(
+        "--data-source", type=Path, required=True, help="JSON file with keys."
+    )
+    parser.add_argument(
+        "--sample-size", type=int, default=-1, help="Number of samples to run."
+    )
     parser.add_argument("--start-index", type=int, default=0, help="Start index.")
-    parser.add_argument("--restart", action="store_true", help="Skip configurations marked as processed.")
-    parser.add_argument("--local-dir", type=Path, default=None, help="Optional local directory to read data from instead of S3.")
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Skip configurations marked as processed.",
+    )
+    parser.add_argument(
+        "--local-dir",
+        type=Path,
+        default=None,
+        help="Optional local directory to read data from instead of S3.",
+    )
     parser.add_argument("--mpi", action="store_true", help="Run with MPI.")
     parser.add_argument(
         "--log-level",
@@ -52,9 +69,9 @@ def parse_args():
 
 def process_prefix(x, data, args, s3_client):
     """Processes a single prefix synchronously."""
-    raw_key = data[x]['key']
+    raw_key = data[x]["key"]
     key_list = [raw_key] if isinstance(raw_key, str) else raw_key
-    
+
     success = True
     for k in key_list:
         source = x + k
@@ -70,16 +87,17 @@ def process_prefix(x, data, args, s3_client):
                 buffer.write(content)
             else:
                 response = s3_client.get_object(Bucket=args.bucket, Key=source)
-                buffer.write(response['Body'].read())
-            
+                buffer.write(response["Body"].read())
+
             buffer.seek(0)
             extract_buffer(buffer, x, k)
 
         except Exception as e:
             logger.error(f"Error processing {source}: {e}")
             success = False
-    
+
     return x if success else None
+
 
 def extract_buffer(buffer: BytesIO, x: str, k: str):
     """Decompresses and extracts the buffer to disk."""
@@ -110,9 +128,9 @@ def extract_buffer(buffer: BytesIO, x: str, k: str):
             working_buffer.seek(0)
             out_name = Path(k).name
             if is_zstd:
-                for suffix in ['.zst', '.zstd0', '.zstd']:
+                for suffix in [".zst", ".zstd0", ".zstd"]:
                     if out_name.endswith(suffix):
-                        out_name = out_name[:-len(suffix)]
+                        out_name = out_name[: -len(suffix)]
                         break
             with open(out_dir / out_name, "wb") as f_out:
                 f_out.write(working_buffer.read())
@@ -120,16 +138,17 @@ def extract_buffer(buffer: BytesIO, x: str, k: str):
         logger.error(f"Extraction error for {x}: {e}")
         raise
 
+
 def manager_loop(keys, data, restart_file, comm, size):
     """Rank 0 Dispatcher for downloads (Synchronous)."""
     start_time = time.time()
     logger.info(f"Download Manager starting with {size - 1} workers.")
-    
+
     pending_keys = list(keys)
     active_workers = size - 1
     processed_count = 0
     pbar = tqdm(total=len(pending_keys), desc="Download Progress")
-    
+
     while active_workers > 0:
         status = MPI.Status()
         msg = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
@@ -142,19 +161,20 @@ def manager_loop(keys, data, restart_file, comm, size):
             else:
                 comm.send(None, dest=source)
                 active_workers -= 1
-        elif isinstance(msg, str): # prefix (success)
-            data[msg]['processed'] = True
+        elif isinstance(msg, str):  # prefix (success)
+            data[msg]["processed"] = True
             processed_count += 1
             pbar.update(1)
-            
+
             if processed_count % 100 == 0:
                 with open(restart_file, "w") as f:
                     json_dump(data, f, indent=4)
-        
+
     pbar.close()
     with open(restart_file, "w") as f:
         json_dump(data, f, indent=4)
     logger.info(f"Download complete in {time.time() - start_time:.2f} seconds.")
+
 
 def worker_loop(data, args, comm):
     """Rank > 0 Downloader (Synchronous)."""
@@ -163,24 +183,27 @@ def worker_loop(data, args, comm):
         with open(args.login_file, "r") as f:
             creds = json_load(f)
         s3_client = boto3.client(
-            's3', region_name='us-east-1',
+            "s3",
+            region_name="us-east-1",
             endpoint_url="https://s3.echo.stfc.ac.uk",
             aws_access_key_id=creds["access_key"],
             aws_secret_access_key=creds["secret_key"],
-            config=Config(retries={'max_attempts': 5})
+            config=Config(retries={"max_attempts": 5}),
         )
 
     try:
         while True:
             comm.send("READY", dest=0)
             key = comm.recv(source=0, tag=MPI.ANY_TAG)
-            if key is None: break
-            
+            if key is None:
+                break
+
             res = process_prefix(key, data, args, s3_client)
             if res:
                 comm.send(res, dest=0)
     finally:
         pass
+
 
 def download_serial(keys, data, args):
     """Serial download (Synchronous)."""
@@ -190,25 +213,27 @@ def download_serial(keys, data, args):
         with open(args.login_file, "r") as f:
             creds = json_load(f)
         s3_client = boto3.client(
-            's3', region_name='us-east-1',
+            "s3",
+            region_name="us-east-1",
             endpoint_url="https://s3.echo.stfc.ac.uk",
             aws_access_key_id=creds["access_key"],
-            aws_secret_access_key=creds["secret_key"]
+            aws_secret_access_key=creds["secret_key"],
         )
-        
+
     try:
         for x in tqdm(keys, desc="Serial Download"):
             res = process_prefix(x, data, args, s3_client)
             if res:
-                data[res]['processed'] = True
-                
+                data[res]["processed"] = True
+
         logger.info(f"Download complete in {time.time() - start_time:.2f} seconds.")
     finally:
         pass
 
+
 def main():
     args = parse_args()
-    
+
     if args.mpi:
         comm = mpi.COMM_WORLD
         rank = comm.Get_rank()
@@ -219,13 +244,23 @@ def main():
         size = 1
 
     log_level_map = {
-        "DEBUG": logging.DEBUG, "INFO": logging.INFO, "WARNING": logging.WARNING,
-        "ERROR": logging.ERROR, "CRITICAL": logging.CRITICAL,
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "CRITICAL": logging.CRITICAL,
     }
 
     if rank == 0:
-        logfile = args.log_file if args.log_file else Path(args.data_source.stem + "_download.log")
-        setup_logging(level=log_level_map.get(args.log_level.upper(), logging.INFO), log_file_path=logfile)
+        logfile = (
+            args.log_file
+            if args.log_file
+            else Path(args.data_source.stem + "_download.log")
+        )
+        setup_logging(
+            level=log_level_map.get(args.log_level.upper(), logging.INFO),
+            log_file_path=logfile,
+        )
 
     with open(args.data_source, "r", encoding="utf-8") as f:
         data = json_load(f)
@@ -233,7 +268,9 @@ def main():
     if args.data_source.name.endswith("_restart.json"):
         restart_file = args.data_source
     else:
-        restart_file = args.data_source.with_name(args.data_source.stem + "_restart.json")
+        restart_file = args.data_source.with_name(
+            args.data_source.stem + "_restart.json"
+        )
 
     if args.restart:
         keys = [x for x in data if not data[x].get("processed", False)]
@@ -241,9 +278,9 @@ def main():
         keys = list(data.keys())
 
     if args.sample_size > 0:
-        keys = keys[args.start_index:args.start_index + args.sample_size]
+        keys = keys[args.start_index : args.start_index + args.sample_size]
     else:
-        keys = keys[args.start_index:]
+        keys = keys[args.start_index :]
 
     if size > 1:
         if rank == 0:

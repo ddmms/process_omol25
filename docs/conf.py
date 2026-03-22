@@ -1,6 +1,7 @@
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../src'))
+
+sys.path.insert(0, os.path.abspath("../src"))
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -10,9 +11,9 @@ sys.path.insert(0, os.path.abspath('../src'))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'process_omol25'
-copyright = '2026, Alin M Elena'
-author = 'Alin M Elena'
+project = "process_omol25"
+copyright = "2026, Alin M Elena"
+author = "Alin M Elena"
 
 version = "0.1.11"
 release = "0.1.11"
@@ -21,22 +22,27 @@ release = "0.1.11"
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx_material',
+    "sphinx.ext.autodoc",
+    "sphinx_material",
 ]
 
 autodoc_mock_imports = [
-    "ase", "boto3", "botocore", "zstandard", "pandas",
-    "numpy", "tqdm", "mpi4py"
+    "ase",
+    "boto3",
+    "botocore",
+    "zstandard",
+    "pandas",
+    "numpy",
+    "tqdm",
+    "mpi4py",
 ]
 
-templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
-
+templates_path = ["_templates"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'sphinx_material'
-html_static_path = ['_static']
+html_theme = "sphinx_material"
+html_static_path = ["_static"]
