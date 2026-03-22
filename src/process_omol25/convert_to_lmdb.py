@@ -253,7 +253,7 @@ def cv_xyz_to_lmdb(input_files: List[str], output_file: str):
     with LMDBDatabase(output_file) as db:
         for input_file in input_files:
             print(f"Reading {input_file}...")
-            atoms_list = read(input_file, index=":")
+            atoms_list = read(input_file, format="extxyz", index=":")
             print(f"Found {len(atoms_list)} structures.")
             for atoms in tqdm(atoms_list, desc=f"Writing {Path(input_file).name} to LMDB"):
                 db.write(atoms)
