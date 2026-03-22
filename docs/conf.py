@@ -15,8 +15,8 @@ project = "process_omol25"
 copyright = "2026, Alin M Elena"
 author = "Alin M Elena"
 
-version = "0.1.18"
-release = "0.1.18"
+version = "0.1.19"
+release = "0.1.19"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
