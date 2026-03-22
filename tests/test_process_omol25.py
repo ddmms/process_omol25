@@ -507,3 +507,48 @@ def test_restart_5ranks_matches_serial():
 
     # ---- cleanup ----
     cleanup(serial_dir, mpi_dir, local_data_dir, data_source, restart_file)
+
+def test_download_omol25_mpi():
+    out_dir = Path("test_output_dir_download_mpi")
+    local_data_dir = Path("mock_s3_data_download_mpi")
+    test_data_source = Path("test_download_prefix_mpi.json")
+    
+    # Cleanup
+    for d in [out_dir, local_data_dir]:
+        if d.exists():
+            for p in sorted(d.rglob('*'), reverse=True):
+                p.unlink() if p.is_file() else p.rmdir()
+            d.rmdir()
+
+    # Setup
+    Path(test_data_source).write_bytes(Path("data/noble_gas_compounds_prefix.json").read_bytes())
+    create_mock_data(local_data_dir, test_data_source)
+    
+    cmd = [
+        "mpirun", "--oversubscribe", "-n", "2",
+        sys.executable, "-m", "process_omol25.download_omol25",
+        "--data-source", str(test_data_source),
+        "--local-dir", str(local_data_dir),
+        "--sample-size", "2",
+        "--mpi"
+    ]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    
+    # Check if a file was extracted. 
+    expected_file = Path("noble_gas_compounds/FXeNSO2F2_step20_0_1/orca.out")
+    assert expected_file.exists()
+    
+    # Check restart file:
+    restart_file = Path("test_download_prefix_mpi_restart.json")
+    assert restart_file.exists(), f"Restart file {restart_file} was not created"
+    
+    # Cleanup
+    for d in [out_dir, local_data_dir]:
+        if d.exists():
+            for p in sorted(d.rglob('*'), reverse=True):
+                p.unlink() if p.is_file() else p.rmdir()
+            d.rmdir()
+    test_data_source.unlink(missing_ok=True)
+    restart_file.unlink(missing_ok=True)

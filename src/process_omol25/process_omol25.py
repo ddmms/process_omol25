@@ -200,7 +200,7 @@ def setup_logging(level=logging.INFO, log_file_path="sample.log"):
 
     handlers = []
     if log_file_path:
-        file_handler = logging.FileHandler(log_file_path, mode='w')
+        file_handler = logging.FileHandler(log_file_path, mode='a')
         file_handler.setFormatter(formatter)
         handlers.append(file_handler)
         status_msg = f"Logfile: {log_file_path.resolve()}"
