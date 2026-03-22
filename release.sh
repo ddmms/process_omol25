@@ -10,5 +10,5 @@ git add pyproject.toml
 git add docs/conf.py
 git commit -m "bump version for release $version"
 git tag -f -a v$version -m "release $version"
-git push
+git push --force-with-lease
 git push --tags
