@@ -26,8 +26,8 @@ extensions = [
 ]
 
 autodoc_mock_imports = [
-    "ase", "boto3", "botocore", "zstandard", "pandas", 
-    "numpy", "tqdm", "mpi4py", "psutil"
+    "ase", "boto3", "botocore", "zstandard", "pandas",
+    "numpy", "tqdm", "mpi4py"
 ]
 
 templates_path = ['_templates']

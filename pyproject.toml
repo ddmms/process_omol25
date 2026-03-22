@@ -15,7 +15,6 @@ dependencies = [
     "pandas",
     "ase",
     "mpi4py",
-    "psutil",
     "tqdm",
     "zstandard",
     "pyarrow",
