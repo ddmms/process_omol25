@@ -18,6 +18,9 @@ def test_convert_to_lmdb_aselmdb_format():
     # Create sample 1
     atoms1 = Atoms('H2', positions=[[0, 0, 0], [0, 0, 0.74]])
     atoms1.info['energy'] = -1.0
+    atoms1.info['string_val'] = "hello"
+    atoms1.info['list_val'] = [1.0, 2.0, 3.0]
+    atoms1.info['dict_val'] = {"a": 1, "b": {"c": 2}}
     write(input_xyz1, atoms1)
     
     # Create sample 2

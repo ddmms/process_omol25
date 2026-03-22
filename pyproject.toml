@@ -21,7 +21,9 @@ dependencies = [
     "pyarrow",
     "fastparquet",
     "lmdb",
-    "orjson"
+    "orjson",
+    "fairchem-core",
+    "mace-torch",
 ]
 
 [project.optional-dependencies]
