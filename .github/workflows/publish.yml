@@ -9,6 +9,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
 
+    environment: pypi
+
     # Required for GitHub Releases and PyPI Trusted Publishing OIDC handshakes
     permissions:
       id-token: write
