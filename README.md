@@ -1,12 +1,12 @@
 # process_omol25
 
+[![Tests](https://github.com/ddmms/process_omol25/actions/workflows/test.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/test.yml)
+[![Pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![Docs](https://github.com/ddmms/process_omol25/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/gh-pages.yml)
 [![PyPI version](https://img.shields.io/pypi/v/process_omol25.svg)](https://pypi.org/project/process_omol25/)
 [![Python versions](https://img.shields.io/pypi/pyversions/process_omol25.svg)](https://pypi.org/project/process_omol25/)
 [![License](https://img.shields.io/github/license/ddmms/process_omol25.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Docs Publish](https://github.com/ddmms/process_omol25/actions/workflows/gh-pages.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/gh-pages.yml)
-[![PyPI Publish](https://github.com/ddmms/process_omol25/actions/workflows/publish.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/publish.yml)
-[![Zenodo Publish](https://github.com/ddmms/process_omol25/actions/workflows/publish-zenodo.yml/badge.svg)](https://github.com/ddmms/process_omol25/actions/workflows/publish-zenodo.yml)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)
 
 A Python package for processing omol-25 data using MPI.
