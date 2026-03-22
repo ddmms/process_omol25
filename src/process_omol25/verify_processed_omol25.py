@@ -10,6 +10,7 @@ from pathlib import Path
 
 try:
     import pandas as pd
+    import numpy as np
     import ase.io
 except ImportError as e:
     print(f"Error: Missing required dependency. {e}")
@@ -122,7 +123,6 @@ def main():
                         mismatches += 1
                 elif pq_val != xyz_val:
                     try:
-                        import numpy as np
                         if isinstance(pq_val, np.ndarray) or isinstance(xyz_val, np.ndarray):
                             if not np.allclose(pq_val, xyz_val, equal_nan=True):
                                 print(f"  [Mismatch] sha={sha}, key={key}: NDArray mismatch")

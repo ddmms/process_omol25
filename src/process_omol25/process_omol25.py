@@ -14,15 +14,14 @@ from ase.parallel import DummyMPI
 ase.parallel.world = DummyMPI()
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
 from tarfile import open as tar_open
 from zstandard import ZstdDecompressor
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, Tuple
 import pandas as pd
 import numpy as np
-import psutil
 from tqdm import tqdm
 import time
+from mpi4py import MPI
 
 MiB = 1024 ** 2
 GiB = 1024 * MiB
@@ -491,7 +490,6 @@ class S3DataProcessor:
 
     def _manager_loop(self):
         """Rank 0 Result Collector loop (Hybrid RMA)."""
-        from mpi4py import MPI
         start_time = time.time()
         num_tasks = len(self.indices_to_process)
         logger.info(f"Manager starting. Collecting results for {num_tasks} tasks.")
@@ -533,7 +531,6 @@ class S3DataProcessor:
 
     def _worker_loop(self):
         """Rank > 0 Processing loop (Hybrid RMA)."""
-        from mpi4py import MPI
         s3_client = None
         if not self.local_dir:
             s3_client = boto3.client(
@@ -642,7 +639,6 @@ class S3DataProcessor:
 
     def run_mpi(self):
         """Main entry point for MPI runs (Hybrid RMA)."""
-        from mpi4py import MPI
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()

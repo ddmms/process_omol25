@@ -10,9 +10,10 @@ import boto3
 from botocore.config import Config
 from tqdm import tqdm
 import time
-import psutil
 
-from .process_omol25 import setup_logging, get_ranges
+from .process_omol25 import setup_logging
+from mpi4py import MPI
+from mpi4py import MPI as mpi
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +122,6 @@ def extract_buffer(buffer: BytesIO, x: str, k: str):
 
 def manager_loop(keys, data, restart_file, comm, size):
     """Rank 0 Dispatcher for downloads (Synchronous)."""
-    from mpi4py import MPI
     start_time = time.time()
     logger.info(f"Download Manager starting with {size - 1} workers.")
     
@@ -158,7 +158,6 @@ def manager_loop(keys, data, restart_file, comm, size):
 
 def worker_loop(data, args, comm):
     """Rank > 0 Downloader (Synchronous)."""
-    from mpi4py import MPI
     s3_client = None
     if not args.local_dir:
         with open(args.login_file, "r") as f:
@@ -211,7 +210,6 @@ def main():
     args = parse_args()
     
     if args.mpi:
-        from mpi4py import MPI as mpi
         comm = mpi.COMM_WORLD
         rank = comm.Get_rank()
         size = comm.Get_size()

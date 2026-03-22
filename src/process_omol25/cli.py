@@ -5,6 +5,7 @@ os.environ['ASE_MPI'] = '0'
 from pathlib import Path
 
 from .process_omol25 import S3DataProcessor, setup_logging
+from mpi4py import MPI as mpi
 
 
 def parse_args():
@@ -92,7 +93,6 @@ def main():
     args = parse_args()
 
     if args.mpi:
-        from mpi4py import MPI as mpi
         comm = mpi.COMM_WORLD
         rank = comm.Get_rank()
         size = comm.Get_size()
