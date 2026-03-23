@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import numpy as np
-from process_omol25.convert_to_lmdb import LMDBDatabase, cv_xyz_to_lmdb
+from lavello_mlips.convert_to_lmdb import LMDBDatabase, cv_xyz_to_lmdb
 from ase import Atoms
 from ase.io import read, write
 

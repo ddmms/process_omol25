@@ -4,7 +4,7 @@ API Reference
 Main Processor module
 ---------------------
 
-.. automodule:: process_omol25.process_omol25
+.. automodule:: lavello_mlips.lavello_mlips
    :members:
    :undoc-members:
    :show-inheritance:
@@ -12,7 +12,7 @@ Main Processor module
 CLI Module
 ----------
 
-.. automodule:: process_omol25.cli
+.. automodule:: lavello_mlips.cli
    :members:
    :undoc-members:
    :show-inheritance:

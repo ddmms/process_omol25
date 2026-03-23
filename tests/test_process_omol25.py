@@ -74,7 +74,7 @@ def create_mock_data(local_dir: Path, data_source: Path):
                 source_path.write_bytes(b"dummy")
 
 
-def test_process_omol25_mpi():
+def test_lavello_mlips_mpi():
     out_dir = Path("test_output_dir")
     local_data_dir = Path("mock_s3_data")
     test_data_source = Path("test_noble_gas_prefix.json")
@@ -99,7 +99,7 @@ def test_process_omol25_mpi():
         "2",
         sys.executable,
         "-m",
-        "process_omol25.cli",
+        "lavello_mlips.cli",
         "--data-source",
         str(test_data_source),
         "--output-dir",
@@ -125,7 +125,7 @@ def test_process_omol25_mpi():
     Path("test_noble_gas_prefix_restart.json").unlink(missing_ok=True)
 
 
-def test_process_omol25_no_mpi():
+def test_lavello_mlips_no_mpi():
     out_dir = Path("test_output_dir_no_mpi")
     local_data_dir = Path("mock_s3_data_no_mpi")
     test_data_source = Path("test_noble_gas_prefix_no_mpi.json")
@@ -146,7 +146,7 @@ def test_process_omol25_no_mpi():
     cmd = [
         sys.executable,
         "-m",
-        "process_omol25.cli",
+        "lavello_mlips.cli",
         "--data-source",
         str(test_data_source),
         "--output-dir",
@@ -190,7 +190,7 @@ def test_download_omol25():
     cmd = [
         sys.executable,
         "-m",
-        "process_omol25.download_omol25",
+        "lavello_mlips.download_omol25",
         "--data-source",
         str(test_data_source),
         "--local-dir",
@@ -228,7 +228,7 @@ def test_download_omol25():
     Path("test_download_prefix_restart.json").unlink(missing_ok=True)
 
 
-def test_process_omol25_restart_mpi():
+def test_lavello_mlips_restart_mpi():
     out_dir = Path("test_output_restart_mpi")
     local_data_dir = Path("mock_s3_data_restart")
     test_data_source = Path("test_restart_prefix.json")
@@ -258,7 +258,7 @@ def test_process_omol25_restart_mpi():
         "2",
         sys.executable,
         "-m",
-        "process_omol25.cli",
+        "lavello_mlips.cli",
         "--data-source",
         str(test_data_source),
         "--output-dir",
@@ -287,7 +287,7 @@ def test_process_omol25_restart_mpi():
         "2",
         sys.executable,
         "-m",
-        "process_omol25.cli",
+        "lavello_mlips.cli",
         "--data-source",
         str(restart_file),
         "--output-dir",
@@ -346,7 +346,7 @@ def test_extxyz_props_consistency():
     cmd = [
         sys.executable,
         "-m",
-        "process_omol25.cli",
+        "lavello_mlips.cli",
         "--data-source",
         str(test_data_source),
         "--output-dir",
@@ -472,7 +472,7 @@ def test_restart_5ranks_matches_serial():
         [
             sys.executable,
             "-m",
-            "process_omol25.cli",
+            "lavello_mlips.cli",
             "--data-source",
             str(data_source),
             "--output-dir",
@@ -506,7 +506,7 @@ def test_restart_5ranks_matches_serial():
         "5",
         sys.executable,
         "-m",
-        "process_omol25.cli",
+        "lavello_mlips.cli",
         "--output-dir",
         str(mpi_dir),
         "--local-dir",
@@ -616,7 +616,7 @@ def test_download_omol25_mpi():
         "2",
         sys.executable,
         "-m",
-        "process_omol25.download_omol25",
+        "lavello_mlips.download_omol25",
         "--data-source",
         str(test_data_source),
         "--local-dir",

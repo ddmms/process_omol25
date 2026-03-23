@@ -28,7 +28,7 @@ This package provides three primary command-line interfaces:
 ### 1. Processing Data
 Extract, process, and combine molecular data from an S3 bucket (or local directory):
 ```bash
-process_omol25 --help
+lavello_mlips --help
 ```
 * **MPI Support**: Add `--mpi` and run via `mpirun` to distribute tasks across multiple workers natively via hybrid RMA.
 * **Smart Restart**: Add `--restart` to automatically sweep the output directory, recover orphaned Parquet/XYZ pairs, and pick up right where you left off.

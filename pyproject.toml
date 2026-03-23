@@ -23,6 +23,11 @@ dependencies = [
     "lmdb",
     "orjson",
     "mace-torch>=0.3.15",
+    "janus-core",
+    "pyyaml",
+    "matplotlib",
+    "scikit-learn",
+    "altair",
 ]
 
 [project.optional-dependencies]
@@ -36,16 +41,17 @@ docs = [
 ]
 
 [project.scripts]
-process_omol25 = "process_omol25.cli:main"
-download_omol25 = "process_omol25.download_omol25:main"
-verify_processed_omol25 = "process_omol25.verify_processed_omol25:main"
-convert_to_lmdb = "process_omol25.convert_to_lmdb:main"
+lavello_mlips = "lavello_mlips.cli:main"
+download_omol25 = "lavello_mlips.download_omol25:main"
+verify_processed_omol25 = "lavello_mlips.verify_processed_omol25:main"
+convert_to_lmdb = "lavello_mlips.convert_to_lmdb:main"
+plot_train_results = "lavello_mlips.plot_train_results:main"
 
 
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/process_omol25"]
+packages = ["src/lavello_mlips"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
