@@ -270,7 +270,7 @@ def test_lavello_mlips_restart_mpi():
         "--mpi",
     ]
     result1 = subprocess.run(cmd1, capture_output=True, text=True)
-    assert result1.returncode == 0, f"MPI run 1 failed:\n{result1.stderr}"
+    assert result1.returncode == 0, f"MPI run 1 failed with {result1.returncode}:\nSTDOUT: {result1.stdout}\nSTDERR: {result1.stderr}"
 
     # Check restart file: at least some should be marked processed
     assert restart_file.exists()
@@ -482,9 +482,8 @@ def test_restart_5ranks_matches_serial():
         ],
         capture_output=True,
         text=True,
-        check=True
     )
-    assert result.returncode == 0, f"Serial run failed:\n{result.stderr}"
+    assert result.returncode == 0, f"Serial run failed with {result.returncode}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 
     serial_parquet = list(serial_dir.glob("props_*.parquet"))
     serial_xyz = list(serial_dir.glob("structs_*.xyz"))
@@ -519,9 +518,8 @@ def test_restart_5ranks_matches_serial():
         base_cmd + ["--data-source", str(data_source), "--sample-size", str(half)],
         capture_output=True,
         text=True,
-        check=True
     )
-    assert r1.returncode == 0, f"MPI phase-1 failed:\n{r1.stderr}"
+    assert r1.returncode == 0, f"MPI phase-1 failed with {r1.returncode}:\nSTDOUT: {r1.stdout}\nSTDERR: {r1.stderr}"
     assert restart_file.exists(), "Restart file not created after phase 1"
 
     # Phase 2: continue from restart file (picks up remaining items)
@@ -529,9 +527,8 @@ def test_restart_5ranks_matches_serial():
         base_cmd + ["--data-source", str(restart_file), "--restart"],
         capture_output=True,
         text=True,
-        check=True
     )
-    assert r2.returncode == 0, f"MPI phase-2 failed:\n{r2.stderr}"
+    assert r2.returncode == 0, f"MPI phase-2 failed with {r2.returncode}:\nSTDOUT: {r2.stdout}\nSTDERR: {r2.stderr}"
 
     mpi_parquet = list(mpi_dir.glob("props_*.parquet"))
     mpi_xyz = list(mpi_dir.glob("structs_*.xyz"))
