@@ -110,7 +110,7 @@ def test_lavello_mlips_mpi():
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert result.returncode == 0, f"Command failed with {result.returncode}.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 
     expected_out = out_dir / "props_test_noble_gas.parquet"
     assert expected_out.exists()
@@ -156,7 +156,7 @@ def test_lavello_mlips_no_mpi():
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert result.returncode == 0, f"Command failed with {result.returncode}.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 
     expected_out = out_dir / "props_test_noble_gas_no_mpi.parquet"
     assert expected_out.exists()
@@ -200,7 +200,7 @@ def test_download_omol25():
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert result.returncode == 0, f"Command failed with {result.returncode}.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 
     # Check if a file was extracted.
     expected_file = Path("noble_gas_compounds/FXeNSO2F2_step20_0_1/orca.out")
@@ -298,7 +298,7 @@ def test_lavello_mlips_restart_mpi():
         "--mpi",
     ]
     result = subprocess.run(cmd2, capture_output=True, text=True)
-    assert result.returncode == 0
+    assert result.returncode == 0, f"Command failed with {result.returncode}.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 
     # Final check: all should be processed in the restart file
     with open(restart_file, "r") as f:
@@ -355,7 +355,7 @@ def test_extxyz_props_consistency():
         str(local_data_dir),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    assert result.returncode == 0, f"Serial run failed:\n{result.stderr}"
+    assert result.returncode == 0, f"Serial run failed with {result.returncode}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 
     # After merge there should be exactly ONE Parquet and ONE XYZ file (no rank-specific parts)
     parquet_files = list(out_dir.glob("props_*.parquet"))
@@ -627,7 +627,7 @@ def test_download_omol25_mpi():
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
-    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert result.returncode == 0, f"Command failed with {result.returncode}.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
 
     # Check if a file was extracted.
     expected_file = Path("noble_gas_compounds/FXeNSO2F2_step20_0_1/orca.out")
