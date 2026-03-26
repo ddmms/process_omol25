@@ -113,14 +113,16 @@ def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
             try:
                 Q = int(q_match)
             except ValueError:
-                pass
+                # Ignore unparsable charge value; leave Q as-is (None or previous match).
+                logger.debug("Failed to parse charge value from match %r in text; ignoring.", q_match)
         else:
             m_match = m.group(2)
             if m_match is not None:
                 try:
                     M = int(m_match)
                 except ValueError:
-                    pass
+                    # Ignore unparsable multiplicity value; leave M as-is (None or previous match).
+                    logger.debug("Failed to parse multiplicity value from match %r in text; ignoring.", m_match)
 
     m = RE_XYZ.search(txt)
     if m:
@@ -128,7 +130,10 @@ def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
             Q = int(m.group(1))
             M = int(m.group(2))
         except ValueError:
-            pass
+            # Ignore unparsable XYZ header values; leave Q/M as determined above.
+            logger.debug(
+                "Failed to parse charge/multiplicity from XYZ header match %r; ignoring.", m.groups()
+            )
     return Q, M
 
 
