@@ -11,6 +11,7 @@ from ase.io.jsonio import decode, encode
 from ase.calculators.singlepoint import SinglePointCalculator
 import lmdb
 import numpy as np
+import orjson
 
 logger = logging.getLogger(__name__)
 
@@ -241,9 +242,11 @@ def encode_object(obj: Any, compress=True, json_encode=True) -> bytes:
 def decode_bytestream(bytestream: bytes, decompress=True, json_decode=True) -> Any:
     """Decode compressed JSON bytestream."""
     if decompress:
-        bytestream = zlib.decompress(bytestream).decode("utf-8")
-    else:
-        bytestream = bytestream.decode("utf-8")
+        bytestream = zlib.decompress(bytestream)
+
     if json_decode:
-        return decode(bytestream)
-    return bytestream
+        if b"__ndarray__" in bytestream or b"__complex__" in bytestream:
+            return decode(bytestream.decode("utf-8"))
+        return orjson.loads(bytestream)
+
+    return bytestream.decode("utf-8")
