@@ -13,7 +13,6 @@ from collections import defaultdict
 
 import pandas as pd
 import numpy as np
-from typing import Any, Optional, Union, Dict, List
 from ase.io import read
 
 from .utils import setup_logging
