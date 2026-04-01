@@ -2,7 +2,7 @@ import logging
 import os
 import zlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
 import ase.db.core
 import ase.db.row
