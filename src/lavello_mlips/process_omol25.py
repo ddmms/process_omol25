@@ -117,13 +117,15 @@ def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
             try:
                 Q = int(m.group(1))
             except ValueError:
-                pass
+                # Ignore malformed charge values and continue searching for others.
+                logging.debug("Unable to parse charge value %r from text segment.", m.group(1))
 
     for m in RE_MULTIPLICITY_PATTERN.finditer(txt):
         try:
             M = int(m.group(1))
         except ValueError:
-            pass
+            # Ignore malformed multiplicity values and continue; missing/invalid data yields None.
+            logging.debug("Unable to parse multiplicity value %r from text segment.", m.group(1))
 
     m = RE_XYZ_FILE_PATTERN.search(txt)
     if m:
@@ -131,7 +133,12 @@ def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
             Q = int(m.group(1))
             M = int(m.group(2))
         except ValueError:
-            pass
+            # Ignore malformed charge/multiplicity values from xyzfile header; fall back to any previously parsed values.
+            logging.debug(
+                "Unable to parse charge/multiplicity from xyzfile header values %r, %r.",
+                m.group(1),
+                m.group(2),
+            )
     return Q, M
 
 
