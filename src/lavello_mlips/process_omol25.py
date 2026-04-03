@@ -4,18 +4,15 @@ import logging
 import os
 import re
 import signal
-import sys
 import time
 from io import BytesIO, StringIO
 from json import load as json_load, dump as json_dump
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import boto3
 import numpy as np
 import pandas as pd
 from ase.io import read, write
-from botocore.config import Config
 from mpi4py import MPI
 from tarfile import open as tar_open
 from tqdm import tqdm
@@ -26,7 +23,6 @@ from ase.parallel import DummyMPI
 ase.parallel.world = DummyMPI()
 
 from .s3_processor import S3DataProcessor
-from .utils import setup_logging
 
 # ---------- constants ----------
 AU2D = 2.541746  # a.u. → Debye
@@ -138,14 +134,13 @@ def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
 
 
 def cog(coords):
-    return [sum(v[i] for v in coords) / (len(coords)) for i in range(3)]
+    # Performance optimization: Replace Python nested loop with vectorized numpy operations
+    return np.mean(coords, axis=0).tolist()
 
 
 def cnc(Z, coords):
-    Zsum = sum(Z)
-    return [
-        sum(Z[k] * coords[k][i] for k in range(len(coords))) / Zsum for i in range(3)
-    ]
+    # Performance optimization: Replace Python nested loop with vectorized numpy operations
+    return np.average(coords, weights=Z, axis=0).tolist()
 
 
 def geom_sha1(elems, coords, ndp: int = 6) -> Optional[str]:
