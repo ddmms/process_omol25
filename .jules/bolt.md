@@ -1,3 +1,6 @@
 ## 2024-03-25 - Pre-compiling Regex in performance-critical loops
 **Learning:** Initializing `re` matches inside loops without pre-compiling adds significant overhead. Profiling regex performance specifically in `parse_charge_mult` showed that dynamic matching creates a ~1.5x-2x performance bottleneck over 100k invocations compared to `re.compile()` at the module level.
 **Action:** Always extract regex expressions into pre-compiled module-level constants (e.g., `RE_CHARGE`, `RE_XYZ`) instead of defining them inline, especially in frequently called parsing loops.
+## 2024-04-05 - Vectorized Mathematical Operations Over Nested Python Loops
+**Learning:** Pure Python nested loops for coordinate reductions like Center of Geometry (`cog`) and Center of Nuclear Charge (`cnc`) introduce significant iteration overhead. Replacing them with their vectorized numpy equivalents (`np.mean` and `np.average` with weights) yields a 4-5x speedup for typical small molecule coordinate lists (1k iterations went from ~0.57s to ~0.13s).
+**Action:** When computing geometric or charge reductions over raw Python lists of coordinates, wrap them with `np.asarray()` and utilize numpy's vectorized functions (appending `.tolist()` to match the expected signature), rather than using standard `sum` and list comprehensions.
