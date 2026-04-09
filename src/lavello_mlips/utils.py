@@ -1,9 +1,12 @@
 import logging
 import sys
 from pathlib import Path
-from typing import Optional, Union, Any
+from typing import Optional, Union
 
-def setup_logging(level: int = logging.INFO, log_file_path: Optional[Union[str, Path]] = None) -> None:
+
+def setup_logging(
+    level: int = logging.INFO, log_file_path: Optional[Union[str, Path]] = None
+) -> None:
     """Configures the root logger with a console handler and an optional file handler."""
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     formatter = logging.Formatter(log_format)
