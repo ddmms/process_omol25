@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv-build>=0.10.12,<0.11"]
+build-backend = "uv_build"
 
 [project]
 name = "lavello_mlips"
@@ -50,8 +50,7 @@ plot_train_results = "lavello_mlips.plot_train_results:main"
 
 
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/lavello_mlips"]
+
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

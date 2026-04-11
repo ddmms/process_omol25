@@ -6,7 +6,6 @@ import re
 import signal
 import time
 from io import BytesIO, StringIO
-from json import load as json_load, dump as json_dump
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -23,6 +22,7 @@ from ase.parallel import DummyMPI
 ase.parallel.world = DummyMPI()
 
 from .s3_processor import S3DataProcessor
+from .utils import json_load, json_dump
 
 # ---------- constants ----------
 AU2D = 2.541746  # a.u. → Debye
