@@ -1,7 +1,6 @@
 import argparse
 import logging
 import os
-from typing import Any
 
 os.environ["ASE_MPI"] = "0"
 from pathlib import Path

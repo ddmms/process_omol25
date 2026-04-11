@@ -2,7 +2,7 @@ import logging
 import os
 import zlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
 import ase.db.core
 import ase.db.row
@@ -234,10 +234,18 @@ class LMDBDatabase(ase.db.core.Database):
 def encode_object(obj: Any, compress=True, json_encode=True) -> bytes:
     """Encode object to compressed JSON."""
     if json_encode:
-        obj = encode(obj)
+        try:
+            # OPT_SERIALIZE_NUMPY handles numpy arrays directly
+            obj_bytes = orjson.dumps(obj, option=orjson.OPT_SERIALIZE_NUMPY)
+        except orjson.JSONEncodeError:
+            # Fallback to standard ASE jsonio if orjson fails (e.g. for unsupported complex objects)
+            obj_bytes = encode(obj).encode("utf-8")
+    else:
+        obj_bytes = obj.encode("utf-8") if isinstance(obj, str) else bytes(obj)
+
     if compress:
-        return zlib.compress(obj.encode("utf-8"))
-    return obj.encode("utf-8")
+        return zlib.compress(obj_bytes)
+    return obj_bytes
 
 def decode_bytestream(bytestream: bytes, decompress=True, json_decode=True) -> Any:
     """Decode compressed JSON bytestream."""
@@ -245,8 +253,15 @@ def decode_bytestream(bytestream: bytes, decompress=True, json_decode=True) -> A
         bytestream = zlib.decompress(bytestream)
 
     if json_decode:
-        if b"__ndarray__" in bytestream or b"__complex__" in bytestream:
+        # ASE's custom JSON encoder uses special keys like __ndarray__, __complex__, etc.
+        # If the payload contains these, we must use ASE's decoder to reconstruct the objects.
+        if b'__ndarray__' in bytestream or b'__complex__' in bytestream:
             return decode(bytestream.decode("utf-8"))
-        return orjson.loads(bytestream)
+
+        try:
+            return orjson.loads(bytestream)
+        except orjson.JSONDecodeError:
+            # Fallback to standard ASE jsonio if orjson fails
+            return decode(bytestream.decode("utf-8"))
 
     return bytestream.decode("utf-8")
