@@ -25,7 +25,7 @@ from ase.parallel import DummyMPI
 ase.parallel.world = DummyMPI()
 
 from .s3_processor import S3DataProcessor
-from .utils import setup_logging, json_load, json_dump
+from .utils import json_load, json_dump
 
 # ---------- constants ----------
 AU2D = 2.541746  # a.u. → Debye
