@@ -4,17 +4,14 @@ import logging
 import os
 import re
 import signal
-import sys
 import time
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import boto3
 import numpy as np
 import pandas as pd
 from ase.io import read, write
-from botocore.config import Config
 from mpi4py import MPI
 from tarfile import open as tar_open
 from tqdm import tqdm
