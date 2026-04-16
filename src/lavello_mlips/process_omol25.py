@@ -19,6 +19,7 @@ from zstandard import ZstdDecompressor
 
 import ase.parallel
 from ase.parallel import DummyMPI
+
 ase.parallel.world = DummyMPI()
 
 from .s3_processor import S3DataProcessor
@@ -61,8 +62,10 @@ RE_QUAD = re.compile(
 )
 
 
-def parse_quadrupole(txt: str) -> Optional[Tuple[float, float, float, float, float, float, float]]:
-    if not txt:
+def parse_quadrupole(
+    txt: str,
+) -> Optional[Tuple[float, float, float, float, float, float, float]]:
+    if not txt or "Buckingham" not in txt:
         return None
     match = RE_QUAD.search(txt)
 
@@ -76,7 +79,7 @@ def parse_quadrupole(txt: str) -> Optional[Tuple[float, float, float, float, flo
 
 
 def parse_dipole(txt: str) -> Optional[Tuple[float, float, float, float]]:
-    if not txt:
+    if not txt or ("Dipole" not in txt and "dipole" not in txt and "DIPOLE" not in txt):
         return None
     best = None
     for m in RE_DIP.finditer(txt):
@@ -97,10 +100,21 @@ def parse_dipole(txt: str) -> Optional[Tuple[float, float, float, float]]:
 # ---------- charge/multiplicity ----------
 RE_CHARGE_MULT = re.compile(
     r"(?:Total\s+Charge|Overall\s+charge\s+of\s+the\s+system)\s*[:=]\s*(-?\d+)|"
-    r"Multiplicity\s*[:=]\s*(\d+)", re.I)
+    r"Multiplicity\s*[:=]\s*(\d+)",
+    re.I,
+)
 RE_XYZ = re.compile(r"^\s*\*\s*xyz(?:file)?\s+(-?\d+)\s+(\d+)\b.*$", flags=re.I | re.M)
 
+
 def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
+    if not txt or (
+        "charge" not in txt
+        and "Charge" not in txt
+        and "Multiplicity" not in txt
+        and "xyz" not in txt
+        and "XYZ" not in txt
+    ):
+        return None, None
     Q = None
     M = None
     for m in RE_CHARGE_MULT.finditer(txt):
@@ -110,7 +124,10 @@ def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
                 Q = int(q_match)
             except ValueError:
                 # Ignore unparsable charge value; leave Q as-is (None or previous match).
-                logger.debug("Failed to parse charge value from match %r in text; ignoring.", q_match)
+                logger.debug(
+                    "Failed to parse charge value from match %r in text; ignoring.",
+                    q_match,
+                )
         else:
             m_match = m.group(2)
             if m_match is not None:
@@ -118,7 +135,10 @@ def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
                     M = int(m_match)
                 except ValueError:
                     # Ignore unparsable multiplicity value; leave M as-is (None or previous match).
-                    logger.debug("Failed to parse multiplicity value from match %r in text; ignoring.", m_match)
+                    logger.debug(
+                        "Failed to parse multiplicity value from match %r in text; ignoring.",
+                        m_match,
+                    )
 
     m = RE_XYZ.search(txt)
     if m:
@@ -128,7 +148,8 @@ def parse_charge_mult(txt: str) -> Tuple[Optional[int], Optional[int]]:
         except ValueError:
             # Ignore unparsable XYZ header values; leave Q/M as determined above.
             logger.debug(
-                "Failed to parse charge/multiplicity from XYZ header match %r; ignoring.", m.groups()
+                "Failed to parse charge/multiplicity from XYZ header match %r; ignoring.",
+                m.groups(),
             )
     return Q, M
 
@@ -174,7 +195,7 @@ def homo_lumo(evals, occs, thr=1e-3):
 
 
 def parse_eigens(txt: str) -> Optional[Dict[str, Any]]:
-    if not txt:
+    if not txt or "OCC" not in txt:
         return None
     lines = txt.splitlines()
     blocks = []
@@ -265,7 +286,9 @@ class OmolDataProcessor(S3DataProcessor):
     Derived processor for Omol data, handling MPI orchestration and Orca parsing.
     """
 
-    def __init__(self, args: argparse.Namespace, rank: int, size: int, comm: Any) -> None:
+    def __init__(
+        self, args: argparse.Namespace, rank: int, size: int, comm: Any
+    ) -> None:
         super().__init__(args.login_file, args.bucket, args.local_dir)
         self.args = args
         self.rank = rank
@@ -404,7 +427,9 @@ class OmolDataProcessor(S3DataProcessor):
         if self.rank == 0:
             logger.info(f"Using flush batch size of {self.batch_size}")
 
-    def flush_recs(self, recs: List[Dict[str, Any]], all_atoms: Optional[List[Any]] = None) -> None:
+    def flush_recs(
+        self, recs: List[Dict[str, Any]], all_atoms: Optional[List[Any]] = None
+    ) -> None:
         """Flush a batch of records to Parquet, and optionally atoms to ExtXYZ."""
         if not recs:
             return
@@ -422,7 +447,9 @@ class OmolDataProcessor(S3DataProcessor):
             write(str(xyz_path), all_atoms, format="extxyz")
         self.chunk_idx += 1
 
-    def _process_buffer(self, buffer: BytesIO, x: str) -> Optional[Tuple[Dict[str, Any], Any]]:
+    def _process_buffer(
+        self, buffer: BytesIO, x: str
+    ) -> Optional[Tuple[Dict[str, Any], Any]]:
         """Parse a .tar.zst buffer; returns (rec dict, ASE Atoms) or None."""
         rec: Dict[str, Any] = {}
         try:
@@ -532,7 +559,9 @@ class OmolDataProcessor(S3DataProcessor):
             logger.error(f"Error parsing buffer for {x}: {e}")
             return None
 
-    def process_single(self, idx: int, s3_client: Any = None) -> Optional[Tuple[Dict[str, Any], Any, str]]:
+    def process_single(
+        self, idx: int, s3_client: Any = None
+    ) -> Optional[Tuple[Dict[str, Any], Any, str]]:
         """Processes a single task synchronously. Returns (rec, atoms, x) or None."""
         start_time = time.time()
         x = self.prefixes[idx]
@@ -787,5 +816,6 @@ class OmolDataProcessor(S3DataProcessor):
             self._final_merge(time.time() - start_time)
         finally:
             pass
+
 
 logger = logging.getLogger(__name__)
