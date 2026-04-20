@@ -8,3 +8,7 @@
 ## 2024-03-29 - ASE Custom JSON encoding vs standard JSON
 **Learning:** ASE's custom JSON encoder (`ase.io.jsonio.encode`) will generate dicts with special keys like `__ndarray__` or `__complex__` (e.g. `{"__ndarray__": [[5], "int64", ...]}`). When optimizing JSON deserialization using faster alternatives like `orjson`, it's critical to realize that a normal `json.loads` or `orjson.loads` will deserialize this into a Python dictionary, while ASE's custom `decode` will properly reconstruct the underlying numpy array. Bypassing ASE's decoder without checking for these keys leads to downstream type errors (e.g. `KeyError: '__ndarray__'`).
 **Action:** When replacing or wrapping ASE's jsonio with `orjson`, always fall back to ASE's `decode` if the payload string contains `__ndarray__` or `__complex__` markers, to ensure custom objects are correctly reconstructed.
+
+## 2024-05-18 - Fast-path substring checks before regex on large text blocks
+**Learning:** Parsing large ORCA output files by iterating through every line and running a regular expression (even a precompiled one) is very slow. By inserting a simple string literal check (e.g., `if "OCC" not in txt`) before executing the loop, or `if "OCC" in line` before invoking the regex per line, the overhead is massively reduced (measured ~5x speedup in `parse_eigens`).
+**Action:** When parsing large text blocks, always consider adding a fast-path string containment check (using standard substrings expected by the regex) to skip the expensive regex engine entirely when possible.
