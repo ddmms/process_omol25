@@ -5,6 +5,11 @@
 ## 2024-05-18 - Replacing `json` with `orjson` for large datasets
 **Learning:** In pipelines handling large datasets via dictionaries containing metadata (e.g. millions of prefixes), `json.dump` and `json.load` can become significant bottlenecks, adding seconds or even minutes to startup and checkpointing phases. `orjson` provides a near drop-in replacement that is 4-10x faster for such operations.
 **Action:** When working with large JSON files, especially in a framework requiring frequent disk checkpoints, replace Python's built-in `json` module with `orjson` wrapping `loads`/`dumps` to preserve API compatibility while gaining massive performance boosts.
+
 ## 2024-03-29 - ASE Custom JSON encoding vs standard JSON
 **Learning:** ASE's custom JSON encoder (`ase.io.jsonio.encode`) will generate dicts with special keys like `__ndarray__` or `__complex__` (e.g. `{"__ndarray__": [[5], "int64", ...]}`). When optimizing JSON deserialization using faster alternatives like `orjson`, it's critical to realize that a normal `json.loads` or `orjson.loads` will deserialize this into a Python dictionary, while ASE's custom `decode` will properly reconstruct the underlying numpy array. Bypassing ASE's decoder without checking for these keys leads to downstream type errors (e.g. `KeyError: '__ndarray__'`).
 **Action:** When replacing or wrapping ASE's jsonio with `orjson`, always fall back to ASE's `decode` if the payload string contains `__ndarray__` or `__complex__` markers, to ensure custom objects are correctly reconstructed.
+
+## 2025-01-09 - Avoid string transformation methods on large text blocks
+**Learning:** NEVER use string transformation methods like `.lower()` on large text blocks (e.g., entire file strings) to achieve case insensitivity, as this forces Python to allocate a massive string copy in memory, making it slower and more memory-intensive than letting the C-optimized regex engine scan the original string.
+**Action:** When trying to implement fast-path checks or searching for patterns in large strings, use the case-insensitive flag in the compiled regex or directly use the `re` operations instead of using `.lower()` on the full text block.
