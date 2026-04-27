@@ -26,7 +26,10 @@ def parse_arguments():
         "--model", default="",  help="model to run mlip calculations"
     )
     parser.add_argument(
-        "--head",  default="",  help="head of the model  run mlip calculations"
+        "--head",  default=None,  help="head of the model  run mlip calculations"
+    )
+    parser.add_argument(
+        "--default_dtype", default="float32", help="Default precision for calculations."
     )
     parser.add_argument(
         "--ml_tag", "-m", default="mace_mp", help="Tag for ML model properties."
@@ -78,11 +81,12 @@ def main():
     head = args.head
     frames = args.frames
     stage_two = args.stage_two
-   
+    default_dtype = args.default_dtype
     setup_logging(log_file_path=args.log)
     logger = logging.getLogger(__name__)
-    phead = f"-{head}" if head else head
+    phead = f"-{head}" if head else ""
     suf = "-stagetwo" if stage_two else ""
+    model_name = model.replace(".model","")
     if yaml_file:
         with open(yaml_file, 'r') as f:
             config = yaml.safe_load(f)
@@ -114,7 +118,10 @@ def main():
                     if len(isolated) ==0 or not Path(isolated[0]).exists():
                         raise ValueError(f"isolated atoms file does not exist {iso}")
                     iso_res = Path(isolated[0]).stem+"-results.extxyz"
-                    sp = SinglePoint(struct=isolated[0], arch=arch,device=device,model=model,calc_kwargs={"default_dtype": "float32",'head':head},enable_progress_bar=True, file_prefix=output/Path(isolated[0]).stem, write_results=True)
+                    calc_kwargs = {"default_dtype": default_dtype}
+                    if head:
+                        calc_kwargs["head"] = head
+                    sp = SinglePoint(struct=isolated[0], arch=arch,device=device,model=model,calc_kwargs=calc_kwargs,enable_progress_bar=True, file_prefix=output/Path(isolated[0]).stem, write_results=True)
                     sp.run()
                     all_res = {}
 
@@ -123,7 +130,10 @@ def main():
                       for f in all_files[k]:
                         logger.info(f"singlepoint calculations on {f}")
                         t = Path(f).stem + "-results.extxyz"
-                        sp = SinglePoint(struct=f,arch=arch,device=device,model=model,calc_kwargs={"default_dtype": "float32",'head':head},enable_progress_bar=True, file_prefix=output/Path(f).stem, write_results=True)
+                        calc_kwargs = {"default_dtype": default_dtype}
+                        if head:
+                            calc_kwargs["head"] = head
+                        sp = SinglePoint(struct=f,arch=arch,device=device,model=model,calc_kwargs=calc_kwargs,enable_progress_bar=True, file_prefix=output/Path(f).stem, write_results=True)
                         sp.run()
                         r = read(output/t,index=":")
                         all_res[k] += r
@@ -182,9 +192,12 @@ def main():
                 )
     else:
        logger.info(f"evaluate {frames}")
-       sp = SinglePoint(struct=iso, arch=arch,device=device,model=model,calc_kwargs={"default_dtype": "float64",'head':head},enable_progress_bar=True, write_results=True)
+       calc_kwargs = {"default_dtype": default_dtype}
+       if head:
+           calc_kwargs["head"] = head
+       sp = SinglePoint(struct=iso, arch=arch,device=device,model=model,calc_kwargs=calc_kwargs,enable_progress_bar=True, write_results=True)
        sp.run()
-       sp = SinglePoint(struct=frames,arch=arch,device=device,model=model,calc_kwargs={"default_dtype": "float64",'head':head},enable_progress_bar=True, write_results=True)
+       sp = SinglePoint(struct=frames,arch=arch,device=device,model=model,calc_kwargs=calc_kwargs,enable_progress_bar=True, write_results=True)
        sp.run()
        t = Path(frames).stem + "-results.extxyz"
        r = read(output/t,index=":")
