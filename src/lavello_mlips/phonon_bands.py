@@ -10,7 +10,120 @@ import h5py
 import lzma
 import argparse
 from pathlib import Path
+import pandas as pd
+import altair as alt
 from sklearn.metrics import root_mean_squared_error as rmse
+
+def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick, bands, ml_labels, dft_label_text, title, fmin, fmax, save_file):
+    rows = []
+    npa = len(seg_labels)
+    
+    # Process ML data
+    for idx, d in enumerate(data_list):
+        frequencies = d['frequencies']
+        num_modes = d['num_modes']
+        label = ml_labels[idx] if ml_labels is not None else Path(bands[idx]).stem
+        
+        srmse = ""
+        if dft_data is not None:
+            val_rmse = rmse(dft_data['frequencies'], d['frequencies'])
+            srmse = f" (RMSE: {val_rmse:.4f})"
+
+        full_label = f"{label}{srmse}"
+
+        for i in range(npa):
+            start, end = seg_tick[i][0], seg_tick[i][-1]
+            for mode in range(num_modes):
+                for k_idx in range(start, end):
+                    rows.append({
+                        'k': k_points[k_idx],
+                        'frequency': frequencies[k_idx, mode],
+                        'mode': mode,
+                        'segment': i,
+                        'source': full_label
+                    })
+
+    # Process DFT data
+    if dft_data is not None:
+        dft_frequencies = dft_data['frequencies']
+        num_modes = dft_data['num_modes']
+        for i in range(npa):
+            start, end = seg_tick[i][0], seg_tick[i][-1]
+            for mode in range(num_modes):
+                for k_idx in range(start, end):
+                    rows.append({
+                        'k': k_points[k_idx],
+                        'frequency': dft_frequencies[k_idx, mode],
+                        'mode': mode,
+                        'segment': i,
+                        'source': dft_label_text
+                    })
+
+    df = pd.DataFrame(rows)
+
+    # Base chart
+    base = alt.Chart(df).mark_line(opacity=0.5, strokeWidth=2).encode(
+        x=alt.X('k:Q', scale=alt.Scale(nice=False)),
+        y=alt.Y('frequency:Q', title='Frequency [THz]'),
+        color=alt.Color('source:N', scale=alt.Scale(scheme='category10')),
+        detail='mode:N'
+    ).properties(
+        width=200,
+        height=400
+    )
+
+    if fmin is not None and fmax is not None:
+        base = base.encode(y=alt.Y('frequency:Q', scale=alt.Scale(domain=[fmin, fmax]), title='Frequency [THz]'))
+
+    # Facet by segment
+    charts = []
+    for i in range(npa):
+        # Filter data for this segment to get custom ticks
+        segment_ticks = seg_tick[i]
+        segment_labels = seg_labels[i]
+        
+        label_expr = " && ".join([f"datum.value == {t} ? '{l}' : " for t, l in zip(segment_ticks, segment_labels)]) + "datum.label"
+        # Fix the expression to be a valid ternary chain
+        expr = ""
+        for t, l in zip(segment_ticks, segment_labels):
+            expr += f"datum.value == {t} ? '{l}' : "
+        expr += "datum.label"
+
+        segment_chart = base.transform_filter(
+            alt.datum.segment == i
+        ).encode(
+            x=alt.X('k:Q', 
+                    axis=alt.Axis(values=segment_ticks, labelExpr=expr),
+                    scale=alt.Scale(domain=[k_points[segment_ticks[0]], segment_ticks[-1]], nice=False),
+                    title=None)
+        )
+        if i > 0:
+            segment_chart = segment_chart.encode(y=alt.Y('frequency:Q', axis=None))
+        
+        charts.append(segment_chart)
+
+    final_chart = alt.hconcat(*charts).properties(
+        title=title
+    ).configure_title(
+        fontSize=20,
+        anchor='middle'
+    ).resolve_scale(
+        y='shared'
+    )
+
+    if save_file:
+        if not save_file.endswith('.html'):
+            save_file += '.html'
+        final_chart.save(save_file)
+        print(f"Plot saved to {save_file}")
+    else:
+        # Altair doesn't have a direct 'show' like plt.show() that works everywhere, 
+        # but in many environments it just works if returned or saved to html and opened.
+        # For CLI usage, saving to a temp file and opening might be better, but let's just save to 'phonon_bands.html' by default if no save is provided?
+        # Actually, let's just save to phonon_bands.html if no save file is provided but altair is requested.
+        out = "phonon_bands.html"
+        final_chart.save(out)
+        print(f"No save file provided. Plot saved to {out}")
 
 def main():
     # Parse arguments:
@@ -44,6 +157,11 @@ def main():
     parser.add_argument("--ml_labels", nargs="+", help="labels for ml bands", default=None)
     parser.add_argument("--dft_label", help="label for dft bands", default="DFT")
     parser.add_argument("--save", help="File to save the plot", default=None)
+    parser.add_argument(
+        "--altair",
+        action="store_true",
+        help="Use altair for graphs rather than matplotlib.",
+    )
     args = parser.parse_args()
 
     title = args.title
@@ -54,6 +172,7 @@ def main():
     dft_file = args.dft
     ml_labels = args.ml_labels
     dft_label_text = args.dft_label
+    use_altair = args.altair
 
     assert bands is not None and len(bands) > 0
     if ml_labels is not None:
@@ -143,6 +262,11 @@ def main():
             seg_tick[k] = [ i*sp for i in range(len(seg_labels[k]))]
 
     npa += 1
+    
+    if use_altair:
+        plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick, bands, ml_labels, dft_label_text, title, fmin, fmax, save_file)
+        return
+
     fs=8
     fsize=40
     # Add constant 4 inches to height for title/legend, and 3 inches to width for massive Y-axis labels
