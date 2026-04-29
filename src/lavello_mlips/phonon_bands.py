@@ -14,7 +14,7 @@ import pandas as pd
 import altair as alt
 from sklearn.metrics import root_mean_squared_error as rmse
 
-def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick, bands, ml_labels, dft_label_text, title, fmin, fmax, save_file):
+def plot_phonon_bands_altair(data_list, ref_data, k_points, seg_labels, seg_tick, bands, ml_labels, ref_label_text, title, fmin, fmax, save_file):
     rows = []
     npa = len(seg_labels)
 
@@ -25,9 +25,8 @@ def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick
         label = ml_labels[idx] if ml_labels is not None else Path(bands[idx]).stem
 
         srmse = ""
-        if dft_data is not None:
-            val_rmse = rmse(dft_data['frequencies'], d['frequencies'])
-            srmse = f" (RMSE: {val_rmse:.4f})"
+        if 'rmse' in d:
+            srmse = f" (RMSE: {d['rmse']:.4f})"
 
         full_label = f"{label}{srmse}"
 
@@ -44,19 +43,19 @@ def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick
                     })
 
     # Process DFT data
-    if dft_data is not None:
-        dft_frequencies = dft_data['frequencies']
-        num_modes = dft_data['num_modes']
+    if ref_data is not None:
+        ref_frequencies = ref_data['frequencies']
+        num_modes = ref_data['num_modes']
         for i in range(npa):
             start, end = seg_tick[i][0], seg_tick[i][-1]
             for mode in range(num_modes):
                 for k_idx in range(start, end):
                     rows.append({
                         'k': k_points[k_idx],
-                        'frequency': dft_frequencies[k_idx, mode],
+                        'frequency': ref_frequencies[k_idx, mode],
                         'mode': mode,
                         'segment': i,
-                        'source': dft_label_text
+                        'source': ref_label_text
                     })
 
     df = pd.DataFrame(rows)
@@ -165,7 +164,7 @@ def main():
 
     parser.add_argument("--dft", help="input dft bands file for comparison", default=None)
     parser.add_argument("--ml_labels", nargs="+", help="labels for ml bands", default=None)
-    parser.add_argument("--dft_label", help="label for dft bands", default="DFT")
+    parser.add_argument("--ref_label", help="label for dft bands", default="DFT")
     parser.add_argument("--save", help="File to save the plot", default=None)
     parser.add_argument(
         "--altair",
@@ -179,9 +178,9 @@ def main():
     bands = args.bands
     fmin = args.fmin
     fmax = args.fmax
-    dft_file = args.dft
+    ref_file = args.dft
     ml_labels = args.ml_labels
-    dft_label_text = args.dft_label
+    ref_label_text = args.ref_label
     use_altair = args.altair
 
     assert bands is not None and len(bands) > 0
@@ -227,10 +226,10 @@ def main():
 
         data_list.append({'frequencies': frequencies, 'num_modes': num_modes})
 
-    dft_data = None
-    if dft_file:
-        p = Path(dft_file)
-        assert p.exists(), f"DFT file {dft_file} does not exist"
+    ref_data = None
+    if ref_file:
+        p = Path(ref_file)
+        assert p.exists(), f"DFT file {ref_file} does not exist"
         ext = p.suffix
         if ext == '.xz':
             with lzma.open(p, 'r') as file:
@@ -244,12 +243,12 @@ def main():
 
         if ext == ".hdf5":
             f = data['frequency'][:]
-            dft_frequencies = f.reshape(-1, f.shape[-1])
+            ref_frequencies = f.reshape(-1, f.shape[-1])
             num_modes = data["natom"][()]*3
         else:
-            dft_frequencies = np.array([[band["frequency"] for band in phonon["band"]] for phonon in data["phonon"]])
+            ref_frequencies = np.array([[band["frequency"] for band in phonon["band"]] for phonon in data["phonon"]])
             num_modes = data["natom"]*3
-        dft_data = {'frequencies': dft_frequencies, 'num_modes': num_modes}
+        ref_data = {'frequencies': ref_frequencies, 'num_modes': num_modes}
 
     k_points = np.arange(nqpoint)
 
@@ -271,8 +270,15 @@ def main():
 
     npa += 1
 
+    if ref_data is not None:
+        for idx, d in enumerate(data_list):
+            val_rmse = rmse(ref_data['frequencies'], d['frequencies'])
+            d['rmse'] = val_rmse
+            label = ml_labels[idx] if ml_labels is not None else Path(bands[idx]).stem
+            print(f"{label} RMSE: {val_rmse:.4f}")
+
     if use_altair:
-        plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick, bands, ml_labels, dft_label_text, title, fmin, fmax, save_file)
+        plot_phonon_bands_altair(data_list, ref_data, k_points, seg_labels, seg_tick, bands, ml_labels, ref_label_text, title, fmin, fmax, save_file)
         return
 
     fs=8
@@ -291,12 +297,12 @@ def main():
                 label = Path(bands[idx]).stem if mode == 0 and i == 0 else None
                 axs[0,i].plot(k_points[seg_tick[i][0]:seg_tick[i][-1]], frequencies[seg_tick[i][0]:seg_tick[i][-1], mode], color=c, alpha=0.5, linewidth=3, label=label)
 
-        if dft_data is not None:
-            dft_frequencies = dft_data['frequencies']
-            num_modes = dft_data['num_modes']
+        if ref_data is not None:
+            ref_frequencies = ref_data['frequencies']
+            num_modes = ref_data['num_modes']
             for mode in range(num_modes):
-                label = dft_label_text if mode == 0 and i == 0 else None
-                axs[0,i].plot(k_points[seg_tick[i][0]:seg_tick[i][-1]], dft_frequencies[seg_tick[i][0]:seg_tick[i][-1], mode], color='red', alpha=0.5, linewidth=3, linestyle='--', label=label)
+                label = ref_label_text if mode == 0 and i == 0 else None
+                axs[0,i].plot(k_points[seg_tick[i][0]:seg_tick[i][-1]], ref_frequencies[seg_tick[i][0]:seg_tick[i][-1], mode], color='red', alpha=0.5, linewidth=3, linestyle='--', label=label)
 
         axs[0,i].tick_params(axis='both', labelsize=fsize)
         axs[0,i].set_xticks(seg_tick[i], labels=seg_labels[i])
@@ -315,16 +321,14 @@ def main():
             c = colors[idx % len(colors)]
 
             srmse = ""
-            if dft_data is not None:
-                val_rmse = rmse(dft_data['frequencies'], d['frequencies'])
-                srmse = f" (RMSE: {val_rmse:.4f})"
-                print(f"{label} RMSE: {val_rmse:.4f}")
+            if 'rmse' in d:
+                srmse = f" (RMSE: {d['rmse']:.4f})"
 
             axs[0,0].text(0.0, 1.05 + (total_items - 1 - idx)*0.08, label + srmse, color=c, fontsize=fsize//2,
                           transform=axs[0,0].transAxes, verticalalignment='bottom')
 
-        if dft_data is not None:
-            axs[0,0].text(0.0, 1.05 + total_items*0.08, dft_label_text, color='red', fontsize=fsize//2,
+        if ref_data is not None:
+            axs[0,0].text(0.0, 1.05 + total_items*0.08, ref_label_text, color='red', fontsize=fsize//2,
                           transform=axs[0,0].transAxes, verticalalignment='bottom')
 
     plt.suptitle(title,fontsize=fsize)
