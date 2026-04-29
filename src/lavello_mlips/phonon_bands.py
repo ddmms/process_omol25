@@ -14,7 +14,7 @@ import pandas as pd
 import altair as alt
 from sklearn.metrics import root_mean_squared_error as rmse
 
-def plot_phonon_bands_altair(data_list, ref_data, k_points, seg_labels, seg_tick, bands, ml_labels, ref_label_text, title, fmin, fmax, save_file):
+def plot_phonon_bands_altair(data_list, ref_data, k_points, seg_labels, seg_tick, bands, ml_labels, ref_label_text, title, fmin, fmax, save_file, unit_label="THz"):
     rows = []
     npa = len(seg_labels)
 
@@ -65,7 +65,7 @@ def plot_phonon_bands_altair(data_list, ref_data, k_points, seg_labels, seg_tick
     # Base chart
     base = alt.Chart(df).mark_line(opacity=0.5, strokeWidth=2, clip=True).encode(
         x=alt.X('k:Q', scale=alt.Scale(nice=False)),
-        y=alt.Y('frequency:Q', title='Frequency [THz]'),
+        y=alt.Y('frequency:Q', title=f'Frequency [{unit_label}]'),
         color=alt.Color('source:N', scale=alt.Scale(scheme='category10')),
         detail='mode:N'
     ).properties(
@@ -73,7 +73,7 @@ def plot_phonon_bands_altair(data_list, ref_data, k_points, seg_labels, seg_tick
     )
 
     if fmin is not None and fmax is not None:
-        base = base.encode(y=alt.Y('frequency:Q', scale=alt.Scale(domain=[fmin, fmax]), title='Frequency [THz]'))
+        base = base.encode(y=alt.Y('frequency:Q', scale=alt.Scale(domain=[fmin, fmax]), title=f'Frequency [{unit_label}]'))
 
     # Facet by segment
     charts = []
@@ -162,14 +162,19 @@ def main():
         help="max frequency",
     )
 
-    parser.add_argument("--dft", help="input dft bands file for comparison", default=None)
+    parser.add_argument("--ref", help="input reference bands file for comparison", default=None)
     parser.add_argument("--ml_labels", nargs="+", help="labels for ml bands", default=None)
-    parser.add_argument("--ref_label", help="label for dft bands", default="DFT")
+    parser.add_argument("--ref_label", help="label for reference bands", default="DFT")
     parser.add_argument("--save", help="File to save the plot", default=None)
     parser.add_argument(
         "--altair",
         action="store_true",
         help="Use altair for graphs rather than matplotlib.",
+    )
+    parser.add_argument(
+        "--cm-1",
+        action="store_true",
+        help="Convert frequencies to cm-1",
     )
     args = parser.parse_args()
 
@@ -178,10 +183,11 @@ def main():
     bands = args.bands
     fmin = args.fmin
     fmax = args.fmax
-    ref_file = args.dft
+    ref_file = args.ref
     ml_labels = args.ml_labels
     ref_label_text = args.ref_label
     use_altair = args.altair
+    use_cm1 = args.cm_1
 
     assert bands is not None and len(bands) > 0
     if ml_labels is not None:
@@ -229,7 +235,7 @@ def main():
     ref_data = None
     if ref_file:
         p = Path(ref_file)
-        assert p.exists(), f"DFT file {ref_file} does not exist"
+        assert p.exists(), f"Reference file {ref_file} does not exist"
         ext = p.suffix
         if ext == '.xz':
             with lzma.open(p, 'r') as file:
@@ -249,6 +255,16 @@ def main():
             ref_frequencies = np.array([[band["frequency"] for band in phonon["band"]] for phonon in data["phonon"]])
             num_modes = data["natom"]*3
         ref_data = {'frequencies': ref_frequencies, 'num_modes': num_modes}
+
+    # Unit conversion
+    unit_label = "THz"
+    if use_cm1:
+        conversion_factor = 33.35641
+        unit_label = "cm⁻¹"
+        for d in data_list:
+            d['frequencies'] *= conversion_factor
+        if ref_data is not None:
+            ref_data['frequencies'] *= conversion_factor
 
     k_points = np.arange(nqpoint)
 
@@ -278,7 +294,7 @@ def main():
             print(f"{label} RMSE: {val_rmse:.4f}")
 
     if use_altair:
-        plot_phonon_bands_altair(data_list, ref_data, k_points, seg_labels, seg_tick, bands, ml_labels, ref_label_text, title, fmin, fmax, save_file)
+        plot_phonon_bands_altair(data_list, ref_data, k_points, seg_labels, seg_tick, bands, ml_labels, ref_label_text, title, fmin, fmax, save_file, unit_label)
         return
 
     fs=8
@@ -310,7 +326,7 @@ def main():
             axs[0,i].set_ylim([fmin, fmax])
         axs[0,i].set_xlim([k_points[seg_tick[i][0]], np.max(k_points[seg_tick[i][0]:seg_tick[i][-1]])+1])
         if i == 0:
-            axs[0,i].set_ylabel(f'Frequency [THz]', fontsize=fsize)
+            axs[0,i].set_ylabel(f'Frequency [{unit_label}]', fontsize=fsize)
         else:
             axs[0,i].set_yticklabels([])
 
