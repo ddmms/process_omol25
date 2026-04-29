@@ -17,13 +17,13 @@ from sklearn.metrics import root_mean_squared_error as rmse
 def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick, bands, ml_labels, dft_label_text, title, fmin, fmax, save_file):
     rows = []
     npa = len(seg_labels)
-    
+
     # Process ML data
     for idx, d in enumerate(data_list):
         frequencies = d['frequencies']
         num_modes = d['num_modes']
         label = ml_labels[idx] if ml_labels is not None else Path(bands[idx]).stem
-        
+
         srmse = ""
         if dft_data is not None:
             val_rmse = rmse(dft_data['frequencies'], d['frequencies'])
@@ -61,14 +61,15 @@ def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick
 
     df = pd.DataFrame(rows)
 
+    alt.data_transformers.disable_max_rows()
+
     # Base chart
-    base = alt.Chart(df).mark_line(opacity=0.5, strokeWidth=2).encode(
+    base = alt.Chart(df).mark_line(opacity=0.5, strokeWidth=2, clip=True).encode(
         x=alt.X('k:Q', scale=alt.Scale(nice=False)),
         y=alt.Y('frequency:Q', title='Frequency [THz]'),
         color=alt.Color('source:N', scale=alt.Scale(scheme='category10')),
         detail='mode:N'
     ).properties(
-        width=200,
         height=400
     )
 
@@ -81,25 +82,30 @@ def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick
         # Filter data for this segment to get custom ticks
         segment_ticks = seg_tick[i]
         segment_labels = seg_labels[i]
-        
-        label_expr = " && ".join([f"datum.value == {t} ? '{l}' : " for t, l in zip(segment_ticks, segment_labels)]) + "datum.label"
-        # Fix the expression to be a valid ternary chain
+
+        segment_width = 400
+
+        # Fix the expression to be a valid ternary chain, using absolute difference for robustness
         expr = ""
         for t, l in zip(segment_ticks, segment_labels):
-            expr += f"datum.value == {t} ? '{l}' : "
+            expr += f"abs(datum.value - {t}) < 1e-5 ? '{l}' : "
         expr += "datum.label"
 
         segment_chart = base.transform_filter(
             alt.datum.segment == i
         ).encode(
-            x=alt.X('k:Q', 
-                    axis=alt.Axis(values=segment_ticks, labelExpr=expr),
+            x=alt.X('k:Q',
+                    axis=alt.Axis(values=segment_ticks, labelExpr=expr, labelFontSize=16),
                     scale=alt.Scale(domain=[k_points[segment_ticks[0]], segment_ticks[-1]], nice=False),
                     title=None)
-        )
+        ).properties(width=segment_width)
+
         if i > 0:
-            segment_chart = segment_chart.encode(y=alt.Y('frequency:Q', axis=None))
-        
+            if fmin is not None and fmax is not None:
+                segment_chart = segment_chart.encode(y=alt.Y('frequency:Q', scale=alt.Scale(domain=[fmin, fmax]), axis=None))
+            else:
+                segment_chart = segment_chart.encode(y=alt.Y('frequency:Q', axis=None))
+
         charts.append(segment_chart)
 
     final_chart = alt.hconcat(*charts).properties(
@@ -107,9 +113,13 @@ def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick
     ).configure_title(
         fontSize=20,
         anchor='middle'
-    ).resolve_scale(
-        y='shared'
+    ).configure_axis(
+        labelFontSize=14,
+        titleFontSize=16
     )
+
+    if fmin is None or fmax is None:
+        final_chart = final_chart.resolve_scale(y='shared')
 
     if save_file:
         if not save_file.endswith('.html'):
@@ -117,7 +127,7 @@ def plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick
         final_chart.save(save_file)
         print(f"Plot saved to {save_file}")
     else:
-        # Altair doesn't have a direct 'show' like plt.show() that works everywhere, 
+        # Altair doesn't have a direct 'show' like plt.show() that works everywhere,
         # but in many environments it just works if returned or saved to html and opened.
         # For CLI usage, saving to a temp file and opening might be better, but let's just save to 'phonon_bands.html' by default if no save is provided?
         # Actually, let's just save to phonon_bands.html if no save file is provided but altair is requested.
@@ -186,9 +196,8 @@ def main():
     for band_file in bands:
         p = Path(band_file)
         assert p.exists(), f"File {band_file} does not exist"
-        
+
         ext = p.suffix
-        print(f"{ext}")
         data = None
         if ext == '.xz':
             with lzma.open(p, 'r') as file:
@@ -196,7 +205,6 @@ def main():
                 data = yaml.safe_load(dc)
         elif ext == '.hdf5':
             data  = h5py.File(p, 'r')
-            print(f"{list(data.keys())}")
         else:
             with open(p, 'r') as file:
                 data = yaml.safe_load(file)
@@ -216,7 +224,7 @@ def main():
                 sp = data['segment_nqpoint'][0]
             num_modes = data["natom"]*3
             frequencies = np.array([[band["frequency"] for band in phonon["band"]] for phonon in data["phonon"]])
-            
+
         data_list.append({'frequencies': frequencies, 'num_modes': num_modes})
 
     dft_data = None
@@ -233,7 +241,7 @@ def main():
         else:
             with open(p, 'r') as file:
                 data = yaml.safe_load(file)
-        
+
         if ext == ".hdf5":
             f = data['frequency'][:]
             dft_frequencies = f.reshape(-1, f.shape[-1])
@@ -262,7 +270,7 @@ def main():
             seg_tick[k] = [ i*sp for i in range(len(seg_labels[k]))]
 
     npa += 1
-    
+
     if use_altair:
         plot_phonon_bands_altair(data_list, dft_data, k_points, seg_labels, seg_tick, bands, ml_labels, dft_label_text, title, fmin, fmax, save_file)
         return
@@ -282,7 +290,7 @@ def main():
             for mode in range(num_modes):
                 label = Path(bands[idx]).stem if mode == 0 and i == 0 else None
                 axs[0,i].plot(k_points[seg_tick[i][0]:seg_tick[i][-1]], frequencies[seg_tick[i][0]:seg_tick[i][-1], mode], color=c, alpha=0.5, linewidth=3, label=label)
-                
+
         if dft_data is not None:
             dft_frequencies = dft_data['frequencies']
             num_modes = dft_data['num_modes']
@@ -305,18 +313,18 @@ def main():
         for idx, d in enumerate(data_list):
             label = ml_labels[idx] if ml_labels is not None else Path(bands[idx]).stem
             c = colors[idx % len(colors)]
-            
+
             srmse = ""
             if dft_data is not None:
                 val_rmse = rmse(dft_data['frequencies'], d['frequencies'])
                 srmse = f" (RMSE: {val_rmse:.4f})"
                 print(f"{label} RMSE: {val_rmse:.4f}")
 
-            axs[0,0].text(0.0, 1.05 + (total_items - 1 - idx)*0.08, label + srmse, color=c, fontsize=fsize//2, 
+            axs[0,0].text(0.0, 1.05 + (total_items - 1 - idx)*0.08, label + srmse, color=c, fontsize=fsize//2,
                           transform=axs[0,0].transAxes, verticalalignment='bottom')
-        
+
         if dft_data is not None:
-            axs[0,0].text(0.0, 1.05 + total_items*0.08, dft_label_text, color='red', fontsize=fsize//2, 
+            axs[0,0].text(0.0, 1.05 + total_items*0.08, dft_label_text, color='red', fontsize=fsize//2,
                           transform=axs[0,0].transAxes, verticalalignment='bottom')
 
     plt.suptitle(title,fontsize=fsize)
