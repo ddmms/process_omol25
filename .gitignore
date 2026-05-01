@@ -72,3 +72,4 @@ psdi-argonne-omol25-ro.json
 # Intermediate test files
 *_restart.json
 *.parquet
+tests/*.aselmdb-lock
