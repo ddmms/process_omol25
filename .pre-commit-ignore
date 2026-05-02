@@ -1,0 +1,1 @@
+When running pre-commit hooks (python -m pre_commit run --all-files), pre-existing linting failures in unmodified files (e.g., bare except or import errors flagged by ruff) can be safely ignored as long as no new failures are introduced by your changes.
