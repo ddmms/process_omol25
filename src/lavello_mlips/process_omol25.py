@@ -145,11 +145,15 @@ def cnc(Z, coords):
 
 
 def geom_sha1(elems, coords, ndp: int = 6) -> Optional[str]:
+    """Calculate the SHA-1 hash of a molecule's geometry."""
     h = hashlib.sha1()
-    for e, (x, y, z) in zip(elems, coords):
-        h.update(
-            f"{e}:{round(x, ndp):.6f}:{round(y, ndp):.6f}:{round(z, ndp):.6f};".encode()
-        )
+    # Optimization: using "".join() with a generator is faster than iterative .update() and .encode()
+    h.update(
+        "".join(
+            f"{e}:{round(x, ndp):.6f}:{round(y, ndp):.6f}:{round(z, ndp):.6f};"
+            for e, (x, y, z) in zip(elems, coords)
+        ).encode()
+    )
     return h.hexdigest()
 
 
